@@ -26,10 +26,14 @@ export const navMenu: NavMenu[] = [
     heading: 'Analysis',
     items: [
       {
+        title: 'AI Research',
+        icon: 'i-lucide-brain',
+        link: '/research',
+      },
+      {
         title: 'Backtest',
         icon: 'i-lucide-flask-conical',
-        link: '/backtest',
-        disabled: true,
+        link: '/strategy/backtest',
       },
       {
         title: 'Screener',
