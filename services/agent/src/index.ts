@@ -23,7 +23,6 @@ new VoltAgent({
   logger,
   server: honoServer({
     port: 4001,
-    basePath: '/agent',
   }),
 })
 

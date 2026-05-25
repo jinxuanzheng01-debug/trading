@@ -9,7 +9,7 @@ const analysis = new Hono()
 
 // 触发分析
 analysis.post('/start', async (c) => {
-  const user = c.get('user') as { id: number }
+  const user = c.get('user') as unknown as { id: number }
   const body = await c.req.json<{ ticker: string; market: string; depth: string }>()
 
   const [run] = await db.insert(analysisRuns).values({
@@ -24,8 +24,8 @@ analysis.post('/start', async (c) => {
     runId: String(run.id),
     userId: user.id,
     ticker: body.ticker,
-    market: body.market || 'a_stock',
-    depth: body.depth || 'quick',
+    market: (body.market || 'a_stock') as AnalysisJobData['market'],
+    depth: (body.depth || 'quick') as AnalysisJobData['depth'],
   }
   await analysisQueue.add('analyze', jobData, {
     attempts: 2,
@@ -37,7 +37,7 @@ analysis.post('/start', async (c) => {
 
 // 查询分析状态
 analysis.get('/:id', async (c) => {
-  const user = c.get('user') as { id: number }
+  const user = c.get('user') as unknown as { id: number }
   const id = Number(c.req.param('id'))
 
   const rows = await db.select().from(analysisRuns)
@@ -140,7 +140,7 @@ analysis.get('/:id/stream', async (c) => {
 
 // 分析历史
 analysis.get('/', async (c) => {
-  const user = c.get('user') as { id: number }
+  const user = c.get('user') as unknown as { id: number }
 
   const runs = await db.select().from(analysisRuns)
     .where(eq(analysisRuns.userId, user.id))

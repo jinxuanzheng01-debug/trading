@@ -7,7 +7,7 @@ export default defineEventHandler(async (event) => {
 
   if (path.startsWith('/api/agent')) {
     target = config.agentInternal || 'http://voltagent:4001'
-    targetPath = path.replace('/api/agent', '/agent')
+    targetPath = path.replace('/api/agent', '')
   } else if (path.startsWith('/api/backtest')) {
     target = config.backtestInternal || 'http://backtest:8002'
   } else {
