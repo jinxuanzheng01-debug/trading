@@ -62,6 +62,8 @@ services:
   litellm:
     image: ghcr.io/berriai/litellm:main-latest
     container_name: trading-agent-litellm
+    profiles:
+      - full
     environment:
       - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:-sk-local-dev}
     volumes:
@@ -142,7 +144,6 @@ services:
     depends_on:
       - redis
       - market-data
-      - litellm
     restart: unless-stopped
     networks:
       - trading-net
