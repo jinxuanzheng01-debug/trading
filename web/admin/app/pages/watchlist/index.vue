@@ -1,10 +1,11 @@
 <script setup lang="ts">
+import { toast } from 'vue-sonner'
+
 definePageMeta({
   middleware: 'auth',
 })
 
 const watchlist = useWatchlist()
-const toast = useToast()
 
 const groups = ref<WatchlistGroup[]>([])
 const selectedGroup = ref<WatchlistGroup | null>(null)
@@ -28,11 +29,7 @@ async function loadGroups() {
     }
   }
   catch (error: any) {
-    toast({
-      title: 'Failed to load groups',
-      description: error.message,
-      variant: 'destructive',
-    })
+    toast.error('Failed to load groups', { description: error.message })
   }
   finally {
     isLoading.value = false
@@ -45,11 +42,7 @@ async function selectGroup(group: WatchlistGroup) {
     items.value = await watchlist.getItems(group.id)
   }
   catch (error: any) {
-    toast({
-      title: 'Failed to load items',
-      description: error.message,
-      variant: 'destructive',
-    })
+    toast.error('Failed to load items', { description: error.message })
   }
 }
 
@@ -60,17 +53,10 @@ async function handleCreateGroup() {
     showCreateGroup.value = false
     newGroup.name = ''
     newGroup.description = ''
-    toast({
-      title: 'Group created',
-      description: 'Watchlist group has been created',
-    })
+    toast.success('Group created')
   }
   catch (error: any) {
-    toast({
-      title: 'Failed to create group',
-      description: error.message,
-      variant: 'destructive',
-    })
+    toast.error('Failed to create group', { description: error.message })
   }
 }
 
@@ -85,17 +71,10 @@ async function handleDeleteGroup(group: WatchlistGroup) {
       items.value = []
     }
     await loadGroups()
-    toast({
-      title: 'Group deleted',
-      description: 'Watchlist group has been deleted',
-    })
+    toast.success('Group deleted')
   }
   catch (error: any) {
-    toast({
-      title: 'Failed to delete group',
-      description: error.message,
-      variant: 'destructive',
-    })
+    toast.error('Failed to delete group', { description: error.message })
   }
 }
 
@@ -111,17 +90,10 @@ async function handleAddItem() {
     newItem.name = ''
     newItem.exchange = ''
     newItem.notes = ''
-    toast({
-      title: 'Item added',
-      description: 'Stock has been added to watchlist',
-    })
+    toast.success('Item added')
   }
   catch (error: any) {
-    toast({
-      title: 'Failed to add item',
-      description: error.message,
-      variant: 'destructive',
-    })
+    toast.error('Failed to add item', { description: error.message })
   }
 }
 
@@ -134,17 +106,10 @@ async function handleDeleteItem(item: WatchlistItem) {
     if (selectedGroup.value) {
       await selectGroup(selectedGroup.value)
     }
-    toast({
-      title: 'Item removed',
-      description: 'Stock has been removed from watchlist',
-    })
+    toast.success('Item removed')
   }
   catch (error: any) {
-    toast({
-      title: 'Failed to remove item',
-      description: error.message,
-      variant: 'destructive',
-    })
+    toast.error('Failed to remove item', { description: error.message })
   }
 }
 
