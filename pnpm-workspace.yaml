@@ -8,5 +8,7 @@ allowBuilds:
   argon2: set this to true or false
   esbuild: true
   maplibre-gl: set this to true or false
+  msgpackr-extract: true
+  protobufjs: true
   unrs-resolver: set this to true or false
   vue-demi: true
