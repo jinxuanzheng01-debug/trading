@@ -10,6 +10,7 @@ export default defineEventHandler(async (event) => {
     targetPath = path.replace('/api/agent', '')
   } else if (path.startsWith('/api/backtest')) {
     target = config.backtestInternal || 'http://backtest:8002'
+    targetPath = path.replace('/api/backtest', '/api')
   } else {
     target = config.apiBaseInternal || 'http://api:4000'
   }
