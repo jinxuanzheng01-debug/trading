@@ -4,6 +4,7 @@ import { logger } from 'hono/logger'
 
 import { auth as authRoutes } from './routes/auth'
 import { watchlist as watchlistRoutes } from './routes/watchlist'
+import { analysis as analysisRoutes } from './routes/analysis'
 
 const app = new Hono()
 
@@ -20,6 +21,7 @@ app.get('/', (c) => c.json({ status: 'ok', service: 'trading-agent-api' }))
 // Routes
 app.route('/api/auth', authRoutes)
 app.route('/api/watchlist', watchlistRoutes)
+app.route('/api/analysis', analysisRoutes)
 
 export { app }
 export default app
