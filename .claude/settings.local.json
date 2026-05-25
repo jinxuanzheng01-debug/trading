@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(*)",
+      "Edit(*)",
+      "Write(*)",
+      "Read(*)",
+      "mcp__web-reader__webReader",
+      "mcp__web-search-prime__web_search_prime",
+      "Skill(*)",
+      "AskUserQuestion(*)"
+    ]
+  }
+}

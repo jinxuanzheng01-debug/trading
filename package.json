@@ -1,0 +1,19 @@
+{
+  "name": "trading-agent",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --filter './web/admin' dev",
+    "dev:api": "pnpm --filter './api/business' dev",
+    "dev:all": "pnpm -r --parallel dev",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "db:generate": "pnpm --filter './api/business' db:generate",
+    "db:migrate": "pnpm --filter './api/business' db:migrate",
+    "db:studio": "pnpm --filter './api/business' db:studio"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  }
+}
