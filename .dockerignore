@@ -7,14 +7,9 @@ node_modules
 **/.turbo
 .env
 .env.local
-*.md
-.gitignore
-.npmrc
 .DS_Store
 .claude
 docs
 scripts
-agents
 mcp
-infra
-services
+.claude

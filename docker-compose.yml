@@ -83,9 +83,12 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - JWT_SECRET=your-super-secret-jwt-key-change-in-production
       - NODE_ENV=production
+      - VOLTAGENT_URL=http://voltagent:4001
+      - BACKTEST_URL=http://backtest:8002
     depends_on:
       - postgres
       - redis
+      - voltagent
     restart: unless-stopped
     networks:
       - trading-net
@@ -122,6 +125,41 @@ services:
     networks:
       - trading-net
 
+  voltagent:
+    build:
+      context: .
+      dockerfile: ./services/agent/Dockerfile
+    container_name: trading-agent-voltagent
+    ports:
+      - "4001:4001"
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - MARKET_DATA_URL=http://market-data:8000
+      - BACKEND_URL=http://api:4000
+      - OPENAI_API_KEY=${DEEPSEEK_API_KEY:-sk-placeholder}
+      - OPENAI_BASE_URL=http://litellm:4000
+      - START_WORKER=true
+    depends_on:
+      - redis
+      - market-data
+      - litellm
+    restart: unless-stopped
+    networks:
+      - trading-net
+
+  backtest:
+    build: ./services/backtest
+    container_name: trading-agent-backtest
+    ports:
+      - "8002:8002"
+    environment:
+      - MARKET_DATA_URL=http://market-data:8000
+    depends_on:
+      - market-data
+    restart: unless-stopped
+    networks:
+      - trading-net
+
   # =====================
   # Frontend
   # =====================
@@ -134,10 +172,14 @@ services:
       - "3000:3000"
     environment:
       - NUXT_API_PROXY_TARGET=http://api:4000
+      - NUXT_AGENT_PROXY_TARGET=http://voltagent:4001
+      - NUXT_BACKTEST_PROXY_TARGET=http://backtest:8002
       - NUXT_PUBLIC_MARKET_DATA_API_BASE=http://market-data:8000
     depends_on:
       - api
       - market-data
+      - voltagent
+      - backtest
     restart: unless-stopped
     networks:
       - trading-net
