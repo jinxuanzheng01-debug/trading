@@ -3,6 +3,7 @@ FROM node:22-alpine AS build
 WORKDIR /app
 
 RUN corepack enable pnpm
+RUN pnpm config set registry https://registry.npmmirror.com
 
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY api/business/package.json ./api/business/package.json
@@ -21,6 +22,7 @@ COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY api/business/package.json ./api/business/package.json
 
 RUN corepack enable pnpm && \
+    pnpm config set registry https://registry.npmmirror.com && \
     pnpm install --filter=@trading-agent/api --prod --frozen-lockfile && \
     rm -rf /root/.local/share/pnpm /root/.cache && \
     npm cache clean --force 2>/dev/null || true

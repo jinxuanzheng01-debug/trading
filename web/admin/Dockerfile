@@ -3,6 +3,7 @@ FROM node:22-alpine AS build
 WORKDIR /app
 
 RUN npm install -g pnpm@latest
+RUN pnpm config set registry https://registry.npmmirror.com
 
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY web/admin/package.json ./web/admin/package.json
