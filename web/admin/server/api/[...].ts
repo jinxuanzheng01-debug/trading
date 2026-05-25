@@ -1,13 +1,25 @@
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig(event)
-  const target = config.apiBaseInternal || 'http://api:4000'
+  const path = event.path
+
+  let target: string
+  let targetPath = path
+
+  if (path.startsWith('/api/agent')) {
+    target = config.agentInternal || 'http://voltagent:4001'
+    targetPath = path.replace('/api/agent', '/agent')
+  } else if (path.startsWith('/api/backtest')) {
+    target = config.backtestInternal || 'http://backtest:8002'
+  } else {
+    target = config.apiBaseInternal || 'http://api:4000'
+  }
 
   try {
     const body = ['POST', 'PUT', 'PATCH'].includes(event.method)
       ? await readRawBody(event)
       : undefined
 
-    const response = await fetch(target + event.path, {
+    const response = await fetch(target + targetPath, {
       method: event.method,
       headers: {
         'Content-Type': 'application/json',

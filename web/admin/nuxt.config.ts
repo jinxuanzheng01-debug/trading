@@ -54,6 +54,8 @@ export default defineNuxtConfig({
 
   runtimeConfig: {
     apiBaseInternal: process.env.NUXT_API_PROXY_TARGET || 'http://api:4000',
+    agentInternal: process.env.NUXT_AGENT_PROXY_TARGET || 'http://voltagent:4001',
+    backtestInternal: process.env.NUXT_BACKTEST_PROXY_TARGET || 'http://backtest:8002',
     public: {
       apiBase: process.env.NUXT_PUBLIC_API_BASE || '',
       marketDataApiBase: process.env.NUXT_PUBLIC_MARKET_DATA_API_BASE || 'http://localhost:8000',
