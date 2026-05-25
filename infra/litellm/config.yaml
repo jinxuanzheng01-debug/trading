@@ -1,0 +1,16 @@
+model_list:
+  - model_name: "default"
+    litellm_params:
+      model: "deepseek/deepseek-chat"
+      api_key: "os.environ/DEEPSEEK_API_KEY"
+
+  - model_name: "fallback"
+    litellm_params:
+      model: "openai/qwen-max"
+      api_base: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+      api_key: "os.environ/QWEN_API_KEY"
+
+router_settings:
+  num_retries: 3
+  fallbacks: [{"default": ["fallback"]}]
+  allowed_fails: 2

@@ -59,6 +59,18 @@ services:
   # =====================
   # Backend Services
   # =====================
+  litellm:
+    image: ghcr.io/berriai/litellm:main-latest
+    container_name: trading-agent-litellm
+    environment:
+      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:-sk-local-dev}
+    volumes:
+      - ./infra/litellm/config.yaml:/app/config.yaml
+    command: [--config, /app/config.yaml, --port, 4000]
+    restart: unless-stopped
+    networks:
+      - trading-net
+
   api:
     build:
       context: .
