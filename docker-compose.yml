@@ -44,13 +44,13 @@ services:
     networks:
       - trading-net
 
-  redis-commander:
-    image: rediscommander/redis-commander:latest
+  redis-insight:
+    image: redis/redisinsight:latest
     container_name: trading-agent-redis-ui
+    profiles:
+      - full
     ports:
-      - "8081:8081"
-    environment:
-      REDIS_HOSTS: "local:redis:6379"
+      - "8081:5540"
     depends_on:
       - redis
     networks:
@@ -151,6 +151,8 @@ services:
   backtest:
     build: ./services/backtest
     container_name: trading-agent-backtest
+    profiles:
+      - full
     ports:
       - "8002:8002"
     environment:
@@ -180,7 +182,6 @@ services:
       - api
       - market-data
       - voltagent
-      - backtest
     restart: unless-stopped
     networks:
       - trading-net

@@ -22,7 +22,6 @@ export default defineNuxtConfig({
     '@nuxt/icon',
     '@pinia/nuxt',
     '@nuxtjs/color-mode',
-    '@nuxt/fonts',
   ],
 
   shadcn: {
@@ -37,12 +36,6 @@ export default defineNuxtConfig({
   eslint: {
     config: {
       standalone: false,
-    },
-  },
-
-  fonts: {
-    defaults: {
-      weights: [300, 400, 500, 600, 700, 800],
     },
   },
 
