@@ -44,26 +44,12 @@ services:
     networks:
       - trading-net
 
-  redis-insight:
-    image: redis/redisinsight:latest
-    container_name: trading-agent-redis-ui
-    profiles:
-      - full
-    ports:
-      - "8081:5540"
-    depends_on:
-      - redis
-    networks:
-      - trading-net
-
   # =====================
   # Backend Services
   # =====================
   litellm:
-    image: ghcr.io/berriai/litellm:main-latest
+    image: ghcr.nju.edu.cn/berriai/litellm:main-latest
     container_name: trading-agent-litellm
-    profiles:
-      - full
     environment:
       - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:-sk-local-dev}
     volumes:
@@ -90,7 +76,6 @@ services:
     depends_on:
       - postgres
       - redis
-      - voltagent
     restart: unless-stopped
     networks:
       - trading-net
@@ -144,6 +129,7 @@ services:
     depends_on:
       - redis
       - market-data
+      - litellm
     restart: unless-stopped
     networks:
       - trading-net
@@ -151,8 +137,6 @@ services:
   backtest:
     build: ./services/backtest
     container_name: trading-agent-backtest
-    profiles:
-      - full
     ports:
       - "8002:8002"
     environment:
@@ -182,6 +166,7 @@ services:
       - api
       - market-data
       - voltagent
+      - backtest
     restart: unless-stopped
     networks:
       - trading-net

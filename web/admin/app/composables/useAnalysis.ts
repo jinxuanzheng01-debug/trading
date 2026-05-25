@@ -3,7 +3,7 @@ export function useAnalysis() {
   const baseUrl = config.public.apiBase || ''
 
   const triggerAnalysis = async (ticker: string, market = 'a_stock', depth = 'quick') => {
-    const token = useCookie('token')
+    const token = useCookie('auth_token')
     return await $fetch<{ runId: number; status: string }>(`${baseUrl}/api/analysis/start`, {
       method: 'POST',
       body: { ticker, market, depth },
@@ -12,7 +12,7 @@ export function useAnalysis() {
   }
 
   const getAnalysisHistory = async () => {
-    const token = useCookie('token')
+    const token = useCookie('auth_token')
     return await $fetch(`${baseUrl}/api/analysis`, {
       headers: { Authorization: `Bearer ${token.value}` },
     })

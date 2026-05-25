@@ -10,7 +10,7 @@ export function useAnalysisStream(runId: Ref<string | number>) {
 
   const connect = () => {
     status.value = 'connecting'
-    const token = useCookie('token')
+    const token = useCookie('auth_token')
 
     timer = setInterval(async () => {
       try {
