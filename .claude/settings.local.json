@@ -10,5 +10,9 @@
       "Skill(*)",
       "AskUserQuestion(*)"
     ]
-  }
+  },
+  "enabledMcpjsonServers": [
+    "shadcn"
+  ],
+  "enableAllProjectMcpServers": true
 }

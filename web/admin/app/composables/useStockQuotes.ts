@@ -24,6 +24,8 @@ export interface KlineData {
   dataDate: string
 }
 
+import { ref, readonly } from 'vue'
+
 export function useStockQuotes() {
   const config = useRuntimeConfig()
   const { fetchWithAuth } = useAuth()
@@ -68,6 +70,8 @@ export function useStockQuotes() {
    * Refresh quotes for a group
    */
   async function refreshGroup(groupId: number) {
+    // TODO: Implement refresh group functionality
+    // For now, this is a placeholder that returns mock success
     loading.value = true
     error.value = null
 
@@ -87,6 +91,8 @@ export function useStockQuotes() {
    * Reorder items in a group
    */
   async function reorderItems(groupId: number, itemIds: number[]) {
+    // TODO: Implement reorder items functionality
+    // The endpoint doesn't exist yet, so we'll implement it later
     loading.value = true
     error.value = null
 
