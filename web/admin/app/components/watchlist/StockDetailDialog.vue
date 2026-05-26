@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { createChart, CandlestickSeries, type IChartApi } from 'lightweight-charts'
 import type { WatchlistItem } from '@/composables/useWatchlist'
 import type { KlineData } from '@/composables/useStockQuotes'
 
@@ -39,6 +40,11 @@ interface StockQuote {
 const currentInterval = ref<Interval>('1d')
 const klineData = ref<KlineData[]>([])
 const isLoadingKline = ref(false)
+
+// Chart refs
+const chartContainer = ref<HTMLDivElement>()
+const chartInstance = ref<IChartApi | null>(null)
+const candlestickSeriesApi = ref<ReturnType<IChartApi['addSeries']> | null>(null)
 
 const quote = computed(() => {
   if (!props.item) return null
@@ -88,6 +94,126 @@ function getChangeIcon(changePercent: number | undefined) {
   if (!changePercent) return ''
   return changePercent > 0 ? 'i-lucide-arrow-up' : changePercent < 0 ? 'i-lucide-arrow-down' : ''
 }
+
+/**
+ * Initialize lightweight-charts
+ */
+function initChart() {
+  if (!chartContainer.value) return
+
+  // Clean up existing chart
+  if (chartInstance.value) {
+    chartInstance.value.remove()
+    chartInstance.value = null
+  }
+
+  // Create chart
+  const chart = createChart(chartContainer.value, {
+    width: chartContainer.value.clientWidth,
+    height: 400,
+    layout: {
+      background: { color: 'transparent' },
+      textColor: '#d1d5db',
+    },
+    grid: {
+      vertLines: { color: 'rgba(42, 46, 57, 0.5)' },
+      horzLines: { color: 'rgba(42, 46, 57, 0.5)' },
+    },
+    crosshair: {
+      mode: 1,
+    },
+    rightPriceScale: {
+      borderColor: 'rgba(197, 203, 206, 0.8)',
+    },
+    timeScale: {
+      borderColor: 'rgba(197, 203, 206, 0.8)',
+      timeVisible: true,
+      secondsVisible: false,
+    },
+  })
+
+  // Add candlestick series
+  const candlestick = chart.addSeries(CandlestickSeries, {
+    upColor: '#26a69a',
+    downColor: '#ef5350',
+    borderVisible: false,
+    wickUpColor: '#26a69a',
+    wickDownColor: '#ef5350',
+  })
+
+  chartInstance.value = chart
+  candlestickSeriesApi.value = candlestick
+}
+
+/**
+ * Format K-line data for lightweight-charts
+ */
+function formatChartData(data: KlineData[]) {
+  return data.map(item => ({
+    time: item.timestamp, // API should provide timestamp in correct format
+    open: item.open,
+    high: item.high,
+    low: item.low,
+    close: item.close,
+  }))
+}
+
+/**
+ * Update chart data
+ */
+function updateChart() {
+  if (!chartInstance.value || !candlestickSeriesApi.value || klineData.value.length === 0) return
+
+  const chartData = formatChartData(klineData.value)
+  candlestickSeriesApi.value.setData(chartData)
+
+  // Fit content
+  chartInstance.value.timeScale().fitContent()
+}
+
+/**
+ * Handle window resize for responsive chart
+ */
+function handleResize() {
+  if (!chartInstance.value || !chartContainer.value) return
+
+  chartInstance.value.applyOptions({
+    width: chartContainer.value.clientWidth,
+  })
+}
+
+// Initialize chart when dialog opens and data is loaded
+watch([open, klineData], ([isOpen, data]) => {
+  if (isOpen && data.length > 0) {
+    nextTick(() => {
+      initChart()
+      updateChart()
+    })
+  }
+})
+
+// Update chart when interval changes
+watch(currentInterval, () => {
+  if (chartInstance.value && klineData.value.length > 0) {
+    updateChart()
+  }
+})
+
+// Clean up chart on unmount
+onBeforeUnmount(() => {
+  if (chartInstance.value) {
+    chartInstance.value.remove()
+    chartInstance.value = null
+  }
+  window.removeEventListener('resize', handleResize)
+})
+
+// Add resize listener when chart is initialized
+watch(chartInstance, (instance) => {
+  if (instance) {
+    window.addEventListener('resize', handleResize)
+  }
+})
 </script>
 
 <template>
@@ -221,7 +347,7 @@ function getChangeIcon(changePercent: number | undefined) {
           </CardContent>
         </Card>
 
-        <!-- K-line Chart Placeholder -->
+        <!-- K-line Chart -->
         <Card>
           <CardHeader>
             <CardTitle>K-line Chart</CardTitle>
@@ -239,15 +365,7 @@ function getChangeIcon(changePercent: number | undefined) {
                 <p>No k-line data available</p>
               </div>
             </div>
-            <div v-else class="text-center py-8">
-              <Icon name="i-lucide-chart-line" class="size-16 mx-auto mb-4 text-muted-foreground" />
-              <p class="text-muted-foreground">
-                Chart rendering will be implemented with a charting library
-              </p>
-              <p class="text-sm text-muted-foreground mt-2">
-                {{ klineData.length }} data points loaded
-              </p>
-            </div>
+            <div v-else ref="chartContainer" class="w-full h-[400px]" />
           </CardContent>
         </Card>
 
