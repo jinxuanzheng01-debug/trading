@@ -1,8 +1,8 @@
 # 自选股功能设计文档
 
 **日期**: 2026-05-26
-**版本**: MVP v1.4
-**状态**: 设计已完成，待实施
+**版本**: MVP v1.6
+**状态**: 实施已完成
 
 ## 1. 概述
 
@@ -772,3 +772,47 @@ import { TrendingUp, TrendingDown, Search, Plus, MoreVertical } from 'lucide-vue
 | 2026-05-26 | v1.2 | 极简版：去除缓存表，直接调用 market-data |
 | 2026-05-26 | v1.3 | 加回缓存表，支持回测；分市场定时更新 |
 | 2026-05-26 | v1.4 | 通用基础设施层（stock_quotes/history）；支持 1d/1w/1m 三周期 |
+| 2026-05-27 | v1.5 | 实施阶段 1：数据库 schema、quotes API、前端组件 |
+| 2026-05-27 | v1.6 | 实施阶段 2：TypeScript 类型导出、测试脚本、文档更新 |
+
+## 12. 实施总结
+
+### 12.1 已完成功能 (v1.6)
+
+**后端实现**:
+- ✅ 数据库 schema (stock_quotes, stock_quote_history)
+- ✅ Quotes API 端点 (GET /groups/:id/quotes)
+- ✅ 刷新接口 (POST /groups/:id/refresh)
+- ✅ 排序接口 (PUT /groups/:id/reorder)
+- ✅ K线数据接口 (GET /items/:id/kline)
+- ✅ Market-data 客户端集成
+- ✅ TypeScript 类型定义
+
+**前端实现**:
+- ✅ useWatchlistQuotes composable
+- ✅ WatchlistTable 组件 (含行情显示)
+- ✅ WatchlistToolbar 组件 (排序/筛选)
+- ✅ StockDetailDialog 组件 (K线详情)
+- ✅ CSS 涨跌色彩变量
+- ✅ 响应式布局优化
+
+**文档和测试**:
+- ✅ 设计文档更新至 v1.6
+- ✅ TypeScript 类型导出
+- ✅ 验证脚本创建
+
+### 12.2 待实现功能 (Phase 2)
+
+- ⏳ Market-data 多周期支持 (1w, 1m)
+- ⏳ Scheduler 定时任务
+- ⏳ 集成测试覆盖
+- ⏳ 性能优化 (虚拟滚动)
+- ⏳ 实时行情推送
+- ⏳ 异动检测
+
+### 12.3 技术债务
+
+- 需要添加单元测试和集成测试
+- Market-data 服务需要支持 1w/1m 周期
+- 错误处理需要更细致的用户反馈
+- 缓存策略需要根据实际使用调优

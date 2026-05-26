@@ -369,3 +369,22 @@
     --sidebar-ring: var(--color-violet-900);
   }
 }
+
+/* Market data colors for stock price changes */
+:root {
+  --color-up: var(--color-green-600);
+  --color-up-foreground: var(--color-green-50);
+  --color-down: var(--color-red-600);
+  --color-down-foreground: var(--color-red-50);
+  --color-flat: var(--color-stone-500);
+  --color-flat-foreground: var(--color-stone-50);
+
+  @variant dark {
+    --color-up: var(--color-green-500);
+    --color-up-foreground: var(--color-green-50);
+    --color-down: var(--color-red-500);
+    --color-down-foreground: var(--color-red-50);
+    --color-flat: var(--color-stone-400);
+    --color-flat-foreground: var(--color-stone-50);
+  }
+}

@@ -20,6 +20,42 @@ export interface WatchlistItem {
   sortOrder?: number
   createdAt: string
   updatedAt: string
+  quote?: StockQuote | null
+}
+
+export interface StockQuote {
+  symbol: string
+  market: string
+  name: string | null
+  type: string | null
+  exchange: string | null
+  interval: string
+  open: string | null
+  high: string | null
+  low: string | null
+  close: string | null
+  volume: number | null
+  change: string | null
+  change_percent: string | null
+  prev_close: string | null
+  timestamp: string
+  data_date: string
+  updated_at: string
+}
+
+export interface KlineData {
+  symbol: string
+  interval: string
+  data: Array<{
+    symbol: string
+    interval: string
+    open: number
+    high: number
+    low: number
+    close: number
+    volume: number
+    timestamp: string
+  }>
 }
 
 export function useWatchlist() {
@@ -96,6 +132,40 @@ export function useWatchlist() {
     )
   }
 
+  // New quotes-related functions
+  async function getQuotes(groupId: number) {
+    return await fetchWithAuth<{ items: WatchlistItem[], quotes: StockQuote[] }>(
+      `${config.public.apiBase}/api/watchlist-quotes/groups/${groupId}/quotes`,
+    )
+  }
+
+  async function refreshQuotes(groupId: number) {
+    return await fetchWithAuth<{ items: WatchlistItem[], quotes: StockQuote[] }>(
+      `${config.public.apiBase}/api/watchlist-quotes/groups/${groupId}/refresh`,
+      {
+        method: 'POST',
+      },
+    )
+  }
+
+  async function reorderItems(groupId: number, itemOrders: Array<{ id: number, sort_order: number }>) {
+    return await fetchWithAuth<WatchlistItem[]>(
+      `${config.public.apiBase}/api/watchlist-quotes/groups/${groupId}/reorder`,
+      {
+        method: 'PUT',
+        body: JSON.stringify({ itemOrders }),
+      },
+    )
+  }
+
+  async function getKlineData(itemId: number, interval: string = '1d', limit?: number) {
+    const params = new URLSearchParams({ interval })
+    if (limit) params.append('limit', limit.toString())
+    return await fetchWithAuth<KlineData>(
+      `${config.public.apiBase}/api/watchlist-quotes/items/${itemId}/kline?${params.toString()}`,
+    )
+  }
+
   return {
     getGroups,
     createGroup,
@@ -105,5 +175,9 @@ export function useWatchlist() {
     addItem,
     updateItem,
     deleteItem,
+    getQuotes,
+    refreshQuotes,
+    reorderItems,
+    getKlineData,
   }
 }
