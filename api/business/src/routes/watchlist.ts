@@ -39,6 +39,10 @@ const updateItemSchema = z.object({
   notes: z.string().optional(),
 })
 
+const reorderSchema = z.object({
+  itemIds: z.array(z.number())
+})
+
 // GET /api/watchlist/groups - Get user's groups
 watchlist.get('/groups', async (c) => {
   const user = c.get('user')
@@ -211,6 +215,43 @@ watchlist.delete('/items/:id', async (c) => {
   }
 
   await db.delete(watchlistItems).where(eq(watchlistItems.id, id))
+
+  return c.json({ success: true })
+})
+
+// PUT /api/watchlist/groups/:groupId/reorder - Reorder items in group
+watchlist.put('/groups/:groupId/reorder', zValidator('json', reorderSchema), async (c) => {
+  const user = c.get('user')
+  const groupId = Number(c.req.param('groupId'))
+  const { itemIds } = c.req.valid('json')
+
+  // Verify ownership
+  const [group] = await db.select().from(watchlistGroups)
+    .where(and(eq(watchlistGroups.id, groupId), eq(watchlistGroups.userId, user.userId)))
+    .limit(1)
+
+  if (!group) {
+    return c.json({ error: 'Group not found' }, 404)
+  }
+
+  // Verify all items belong to this group
+  const existingItems = await db.select({ id: watchlistItems.id })
+    .from(watchlistItems)
+    .where(eq(watchlistItems.groupId, groupId))
+
+  const existingIds = new Set(existingItems.map(i => i.id))
+  for (const id of itemIds) {
+    if (!existingIds.has(id)) {
+      return c.json({ error: `Item ${id} not found in group` }, 400)
+    }
+  }
+
+  // Update sort_order for each item
+  for (let i = 0; i < itemIds.length; i++) {
+    await db.update(watchlistItems)
+      .set({ sort_order: i, updatedAt: new Date() })
+      .where(eq(watchlistItems.id, itemIds[i]))
+  }
 
   return c.json({ success: true })
 })
