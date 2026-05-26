@@ -1,4 +1,4 @@
-import { pgTable, serial, text, timestamp, varchar, boolean } from 'drizzle-orm/pg-core'
+import { pgTable, serial, text, timestamp, varchar, boolean, integer } from 'drizzle-orm/pg-core'
 
 export const users = pgTable('users', {
   id: serial('id').primaryKey(),
@@ -28,6 +28,8 @@ export const watchlistItems = pgTable('watchlist_items', {
   type: varchar('type', { length: 20 }).default('stock'), // stock, etf, index, crypto
   exchange: varchar('exchange', { length: 20 }), // NYSE, NASDAQ, SSE, HKEX
   notes: text('notes'),
+  sort_order: integer('sort_order').default(0),
+  market: varchar('market', { length: 20 }),
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
 })

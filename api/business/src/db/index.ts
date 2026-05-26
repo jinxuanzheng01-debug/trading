@@ -5,3 +5,6 @@ const connectionString = process.env.DATABASE_URL || 'postgresql://admin:admin12
 
 const client = postgres(connectionString)
 export const db = drizzle(client)
+
+export * from './schema'
+export * from './schema-stock'
