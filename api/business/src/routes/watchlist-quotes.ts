@@ -5,7 +5,7 @@ import { db } from '../db'
 import { watchlistGroups, watchlistItems } from '../db/schema'
 import { stockQuotes, stockQuoteHistory } from '../db/schema-stock'
 import { authMiddleware } from '../middleware/auth'
-import { eq, and, desc, gt, lt, or } from 'drizzle-orm'
+import { eq, and, desc, gt, lt, or, inArray } from 'drizzle-orm'
 import { getQuotes, getKlines } from '../lib/market-data-client'
 import '../types/hono'
 
@@ -51,9 +51,14 @@ watchlistQuotes.get('/groups/:groupId/quotes', async (c) => {
 
   const symbols = items.map(item => item.symbol)
 
-  // Try to get quotes from cache first
+  // Try to get quotes from cache first - only fetch the symbols we need
   const cachedQuotes = await db.select().from(stockQuotes)
-    .where(eq(stockQuotes.interval, '1d'))
+    .where(
+      and(
+        inArray(stockQuotes.symbol, symbols),
+        eq(stockQuotes.interval, '1d')
+      )
+    )
 
   const cachedQuotesMap = new Map(
     cachedQuotes.map(quote => [`${quote.symbol}_${quote.interval}`, quote])
@@ -125,23 +130,35 @@ watchlistQuotes.get('/groups/:groupId/quotes', async (c) => {
           })
       }
 
-      // Get updated quotes from cache
+      // Get updated quotes from cache - only fetch the symbols we just updated
       const updatedQuotes = await db.select().from(stockQuotes)
-        .where(eq(stockQuotes.interval, '1d'))
+        .where(
+          and(
+            inArray(stockQuotes.symbol, staleSymbols),
+            eq(stockQuotes.interval, '1d')
+          )
+        )
 
-      const updatedQuotesMap = new Map(
-        updatedQuotes.map(q => [q.symbol, q])
-      )
+      // Tag fresh quotes with timestamp for consistency
+      const freshQuotesWithTimestamp = updatedQuotes.map(q => ({
+        ...q,
+        fetchedAt: new Date()
+      }))
 
-      finalQuotes = freshQuotes.map(q => updatedQuotesMap.get(q.symbol) || q)
+      // Build consistent quote set - prefer fresh data over cached
+      const quotesMap = new Map<string, typeof freshQuotes[0]>()
 
-      // Add newly fetched quotes
-      for (const symbol of staleSymbols) {
-        const quote = updatedQuotesMap.get(symbol)
-        if (quote && !finalQuotes.find(q => q.symbol === quote.symbol)) {
-          finalQuotes.push(quote)
-        }
+      // Add all cached quotes first
+      for (const quote of freshQuotes) {
+        quotesMap.set(quote.symbol, quote)
       }
+
+      // Override with fresh quotes (more recent data)
+      for (const quote of freshQuotesWithTimestamp) {
+        quotesMap.set(quote.symbol, quote)
+      }
+
+      finalQuotes = Array.from(quotesMap.values())
     } catch (error) {
       console.error('Failed to fetch quotes from market-data service:', error)
       // Continue with cached quotes if market-data service is unavailable
@@ -236,9 +253,14 @@ watchlistQuotes.post('/groups/:groupId/refresh', async (c) => {
         })
     }
 
-    // Get updated quotes from cache
+    // Get updated quotes from cache - only fetch the symbols we just updated
     const updatedQuotes = await db.select().from(stockQuotes)
-      .where(eq(stockQuotes.interval, '1d'))
+      .where(
+        and(
+          inArray(stockQuotes.symbol, symbols),
+          eq(stockQuotes.interval, '1d')
+        )
+      )
 
     const quotesMap = new Map(
       updatedQuotes.map(quote => [quote.symbol, quote])
@@ -325,6 +347,9 @@ watchlistQuotes.get('/items/:itemId/kline', zValidator('query', klineQuerySchema
     const klines = await getKlines(symbol, interval, queryLimit)
 
     // Also store in history table for cache
+    let insertedCount = 0
+    let errorCount = 0
+
     for (const kline of klines) {
       try {
         await db.insert(stockQuoteHistory)
@@ -342,13 +367,21 @@ watchlistQuotes.get('/items/:itemId/kline', zValidator('query', klineQuerySchema
             timestamp: new Date(kline.timestamp),
           })
           .onConflictDoNothing() // Don't overwrite existing historical data
+        insertedCount++
       } catch (err) {
-        // Ignore duplicate key errors
+        // Log errors but continue processing
+        errorCount++
         const error = err as Error
-        if (!error.message.includes('duplicate key')) {
-          console.error('Failed to insert kline history:', error)
+        // Only log non-duplicate key errors
+        if (!error.message.includes('duplicate key') && !error.message.includes('unique constraint')) {
+          console.error(`Failed to insert kline data for ${kline.symbol}:`, error)
         }
       }
+    }
+
+    // Log summary if there were issues
+    if (errorCount > 0) {
+      console.log(`Kline insertion summary for ${symbol}: ${insertedCount} inserted, ${errorCount} skipped/failed`)
     }
 
     return c.json({
