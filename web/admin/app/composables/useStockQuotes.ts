@@ -36,20 +36,15 @@ export function useStockQuotes() {
 
   /**
    * Get quotes for a group's items
+   * Uses the backend API which handles caching and market-data service calls
    */
-  async function getGroupQuotes(items: Array<{ symbol: string }>) {
-    if (!items.length) {
-      quotes.value = {}
-      return
-    }
-
+  async function getGroupQuotes(groupId: number, interval: string = '1d') {
     loading.value = true
     error.value = null
 
     try {
-      const symbols = items.map(item => item.symbol)
       const response = await fetchWithAuth<{ quotes: StockQuote[] }>(
-        `${config.public.marketDataApiBase}/api/quotes?symbols=${symbols.join(',')}`,
+        `${config.public.apiBase}/api/watchlist-quotes/groups/${groupId}/quotes?interval=${interval}`,
       )
 
       if (response && response.quotes) {
@@ -119,20 +114,21 @@ export function useStockQuotes() {
 
   /**
    * Get K-line data for a specific item
+   * Uses the backend API which handles caching and market-data service calls
    */
-  async function getItemKline(symbol: string, interval: string, limit?: number): Promise<KlineData[]> {
+  async function getItemKline(itemId: number, interval: string = '1d', limit?: number): Promise<KlineData[]> {
     loading.value = true
     error.value = null
 
     try {
-      const params = new URLSearchParams({
-        symbol,
-        interval,
-        ...(limit && { limit: limit.toString() }),
-      })
+      const params = new URLSearchParams()
+      params.set('interval', interval)
+      if (limit) {
+        params.set('limit', limit.toString())
+      }
 
       const response = await fetchWithAuth<{ data: KlineData[] }>(
-        `${config.public.marketDataApiBase}/api/kline?${params}`,
+        `${config.public.apiBase}/api/watchlist-quotes/items/${itemId}/kline?${params}`,
       )
 
       return response?.data || []

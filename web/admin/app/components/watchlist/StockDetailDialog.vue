@@ -62,7 +62,7 @@ async function loadKlineData() {
   isLoadingKline.value = true
   try {
     klineData.value = await getItemKline(
-      props.item.symbol,
+      props.item.id,
       currentInterval.value,
       100,
     )

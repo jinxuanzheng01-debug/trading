@@ -39,7 +39,7 @@ class YFinanceClient(BaseStockDataProvider):
             previousClose=previous_close,
             marketCap=info.get("marketCap"),
             currency=info.get("currency", "USD"),
-            timestamp=datetime.utcnow()
+            timestamp=datetime.utcnow().isoformat()
         )
 
     async def get_quotes(self, symbols: List[str]) -> List[QuoteData]:
@@ -77,7 +77,7 @@ class YFinanceClient(BaseStockDataProvider):
         klines = []
         for timestamp, row in df.tail(limit).iterrows():
             klines.append(KlineData(
-                time=timestamp.to_pydatetime(),
+                time=timestamp.to_pydatetime().isoformat(),
                 open=float(row['Open']),
                 high=float(row['High']),
                 low=float(row['Low']),

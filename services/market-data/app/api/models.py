@@ -1,7 +1,8 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from datetime import datetime
 from decimal import Decimal
 from typing import List, Optional
+from fastapi.encoders import jsonable_encoder
 
 
 class QuoteData(BaseModel):
@@ -17,16 +18,16 @@ class QuoteData(BaseModel):
     previousClose: Optional[float] = None
     marketCap: Optional[int] = None
     currency: Optional[str] = "USD"
-    timestamp: datetime
+    timestamp: str
 
 
 class QuotesResponse(BaseModel):
     data: List[QuoteData]
-    timestamp: datetime
+    timestamp: str
 
 
 class KlineData(BaseModel):
-    time: datetime
+    time: str
     open: float
     high: float
     low: float
@@ -48,7 +49,7 @@ class IndicatorsResponse(BaseModel):
 
 class HealthResponse(BaseModel):
     status: str
-    timestamp: datetime
+    timestamp: str
 
 
 class ErrorResponse(BaseModel):

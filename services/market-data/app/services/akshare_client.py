@@ -51,7 +51,7 @@ class AkShareClient(BaseStockDataProvider):
             open=float(row['今开']) if '今开' in row else None,
             previousClose=previous_close,
             currency="CNY" if self._is_a_stock(symbol) else "HKD",
-            timestamp=datetime.utcnow()
+            timestamp=datetime.utcnow().isoformat()
         )
 
     async def get_quotes(self, symbols: List[str]) -> List[QuoteData]:
@@ -112,7 +112,7 @@ class AkShareClient(BaseStockDataProvider):
         klines = []
         for _, row in df.tail(limit).iterrows():
             klines.append(KlineData(
-                time=pd.to_datetime(row['日期']).to_pydatetime(),
+                time=pd.to_datetime(row['日期']).to_pydatetime().isoformat(),
                 open=float(row['开盘']),
                 high=float(row['最高']),
                 low=float(row['最低']),

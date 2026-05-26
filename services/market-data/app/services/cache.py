@@ -1,11 +1,20 @@
 import json
 import hashlib
 from typing import Optional, Any, List
+from datetime import datetime
 from datetime import timedelta
 import redis.asyncio as redis
 from ..config import get_settings
 
 settings = get_settings()
+
+
+class CustomJSONEncoder(json.JSONEncoder):
+    """Custom JSON encoder that handles datetime objects"""
+    def default(self, obj):
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        return super().default(obj)
 
 
 class CacheService:
@@ -57,7 +66,7 @@ class CacheService:
         await self.redis.setex(
             self._quote_key(symbol),
             self.quote_ttl,
-            json.dumps(data)
+            json.dumps(data, cls=CustomJSONEncoder)
         )
 
     async def get_quotes(self, symbols: List[str]) -> Optional[dict]:
@@ -74,7 +83,7 @@ class CacheService:
         await self.redis.setex(
             self._quotes_key(symbols),
             self.quote_ttl,
-            json.dumps(data)
+            json.dumps(data, cls=CustomJSONEncoder)
         )
 
     async def get_kline(self, symbol: str, interval: str) -> Optional[dict]:
@@ -91,7 +100,7 @@ class CacheService:
         await self.redis.setex(
             self._kline_key(symbol, interval),
             self.kline_ttl,
-            json.dumps(data)
+            json.dumps(data, cls=CustomJSONEncoder)
         )
 
     async def delete_kline(self, symbol: str, interval: str):

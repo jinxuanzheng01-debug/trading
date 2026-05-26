@@ -80,13 +80,13 @@ async function loadItems() {
 }
 
 async function loadQuotes() {
-  if (!items.value.length) {
+  if (!selectedGroup.value) {
     return
   }
 
   isLoadingQuotes.value = true
   try {
-    await getGroupQuotes(items.value)
+    await getGroupQuotes(selectedGroup.value.id, currentInterval.value)
   }
   catch (error: any) {
     console.error('Failed to load quotes:', error)
@@ -98,8 +98,21 @@ async function loadQuotes() {
 }
 
 async function handleRefresh() {
-  await loadQuotes()
-  toast.success('Quotes refreshed')
+  if (!selectedGroup.value) {
+    return
+  }
+
+  isLoadingQuotes.value = true
+  try {
+    await stockQuotes.refreshGroup(selectedGroup.value.id, currentInterval.value)
+    await loadQuotes()
+    toast.success('Quotes refreshed')
+  }
+  catch (error: any) {
+    toast.error('Failed to refresh quotes', { description: error.message })
+  } finally {
+    isLoadingQuotes.value = false
+  }
 }
 
 function handleIntervalChange(interval: Interval) {

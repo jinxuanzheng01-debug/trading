@@ -20,6 +20,8 @@ yf_client = YFinanceClient()
 aks_client = AkShareClient()
 
 
+
+
 def get_client(symbol: str):
     """根据标的代码选择合适的客户端"""
     # 优先使用 AkShare（A股、港股）
@@ -31,7 +33,8 @@ def get_client(symbol: str):
 
 @health_router.get("/health", response_model=HealthResponse)
 async def health_check():
-    return HealthResponse(status="ok", timestamp=datetime.utcnow())
+    response = HealthResponse(status="ok", timestamp=datetime.utcnow().isoformat())
+    return response
 
 
 @router.get("/quote", response_model=QuoteData)
@@ -70,7 +73,7 @@ async def get_quotes(symbols: str = Query(..., description="逗号分隔的股�
     if yf_symbols:
         results.extend(await yf_client.get_quotes(yf_symbols))
 
-    response = QuotesResponse(data=results, timestamp=datetime.utcnow())
+    response = QuotesResponse(data=results, timestamp=datetime.utcnow().isoformat())
 
     # 写入缓存
     await cache.set_quotes(symbol_list, response.model_dump())
@@ -105,6 +108,7 @@ async def get_kline(
     # 写入缓存
     await cache.set_kline(symbol, interval, response.model_dump())
 
+    # datetime serialization handled by Pydantic validators
     return response
 
 
