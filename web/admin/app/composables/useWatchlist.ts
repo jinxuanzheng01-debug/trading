@@ -11,51 +11,17 @@ export interface WatchlistGroup {
 export interface WatchlistItem {
   id: number
   groupId: number
+  stockId: number
   symbol: string
   name?: string
-  type: 'stock' | 'etf' | 'index' | 'crypto'
+  nameCn?: string
+  type: string
   exchange?: string
-  notes?: string
   market?: string
   sortOrder?: number
+  notes?: string
   createdAt: string
   updatedAt: string
-  quote?: StockQuote | null
-}
-
-export interface StockQuote {
-  symbol: string
-  market: string
-  name: string | null
-  type: string | null
-  exchange: string | null
-  interval: string
-  open: string | null
-  high: string | null
-  low: string | null
-  close: string | null
-  volume: number | null
-  change: string | null
-  change_percent: string | null
-  prev_close: string | null
-  timestamp: string
-  data_date: string
-  updated_at: string
-}
-
-export interface KlineData {
-  symbol: string
-  interval: string
-  data: Array<{
-    symbol: string
-    interval: string
-    open: number
-    high: number
-    low: number
-    close: number
-    volume: number
-    timestamp: string
-  }>
 }
 
 export function useWatchlist() {

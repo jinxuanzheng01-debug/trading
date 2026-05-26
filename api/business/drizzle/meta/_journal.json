@@ -8,6 +8,13 @@
       "when": 1779810793327,
       "tag": "0000_serious_shard",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1779814362024,
+      "tag": "0001_flippant_firedrake",
+      "breakpoints": true
     }
   ]
 }

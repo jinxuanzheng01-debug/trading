@@ -8,6 +8,16 @@ export interface User {
 const TOKEN_KEY = 'auth_token'
 const USER_KEY = 'auth_user'
 
+/** 业务错误类 - 用于统一响应处理 */
+export class BusinessError extends Error {
+  code: number
+  constructor(msg: string, code: number) {
+    super(msg)
+    this.name = 'BusinessError'
+    this.code = code
+  }
+}
+
 export function useAuth() {
   const config = useRuntimeConfig()
   const token = useCookie(TOKEN_KEY, {
@@ -62,13 +72,20 @@ export function useAuth() {
       throw new Error('Not authenticated')
     }
 
-    return await $fetch<T>(url, {
+    const res = await $fetch<{ code: number; msg: string; data: T }>(url, {
       ...options,
       headers: {
         ...options?.headers,
         Authorization: `Bearer ${token.value}`,
       },
     })
+
+    // 统一响应解包：code !== 0 为业务错误
+    if (res.code !== 0) {
+      throw new BusinessError(res.msg || '请求失败', res.code)
+    }
+
+    return res.data as T
   }
 
   return {

@@ -4,7 +4,7 @@ import logging
 from fastapi import FastAPI
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from app.config import get_settings
-from app.jobs.sync_kline import sync_watchlist_klines, sync_single_symbol_klines
+from app.jobs.sync_kline import sync_all_stock_klines, sync_single_symbol_klines
 from app.jobs.sync_stock_quotes import sync_cn_quotes, sync_hk_quotes, sync_us_quotes
 from app.clients.redis_client import create_consumer_group, read_events, ack_message, close_redis
 
@@ -71,13 +71,13 @@ async def startup():
     # 创建 Redis Stream 消费者组
     await create_consumer_group()
 
-    # 启动 K线同步定时任务（每天凌晨 2 点执行）
+    # 启动 K线同步定时任务（每天早上 6 点，美股已收盘）
     scheduler.add_job(
-        sync_watchlist_klines,
+        sync_all_stock_klines,
         'cron',
-        hour=2,
+        hour=6,
         minute=0,
-        id='sync_watchlist_klines'
+        id='sync_all_stock_klines'
     )
 
     # 启动报价同步定时任务

@@ -43,7 +43,7 @@ export function useStockQuotes() {
     error.value = null
 
     try {
-      const response = await fetchWithAuth<{ quotes: StockQuote[] }>(
+      const response = await fetchWithAuth<{ items: any[]; quotes: StockQuote[] }>(
         `${config.public.apiBase}/api/watchlist-quotes/groups/${groupId}/quotes?interval=${interval}`,
       )
 

@@ -8,16 +8,7 @@ definePageMeta({
 type Interval = '1d' | '1w' | '1M'
 
 const watchlist = useWatchlist()
-
-// Import useStockQuotes inline to avoid type issues
-const { getGroupQuotes, getItemKline, quotes, loading } = (await import('@/composables/useStockQuotes')).useStockQuotes()
-
-const stockQuotes = {
-  getGroupQuotes,
-  getItemKline,
-  quotes,
-  loading,
-}
+const stockQuotes = useStockQuotes()
 
 const groups = ref<WatchlistGroup[]>([])
 const selectedGroup = ref<WatchlistGroup | null>(null)
@@ -29,12 +20,13 @@ const isLoadingQuotes = ref(false)
 // Dialog states
 const showCreateGroup = ref(false)
 const showAddItem = ref(false)
+const isAdding = ref(false)
 const showStockDetail = ref(false)
 const selectedStock = ref<WatchlistItem | null>(null)
 
 // Form data
 const newGroup = reactive({ name: '', description: '' })
-const newItem = reactive({ symbol: '', name: '', type: 'stock' as const, exchange: '', market: '', notes: '' })
+const newItem = reactive({ symbol: '' })
 
 // Current interval for chart
 const currentInterval = ref<Interval>('1d')
@@ -48,7 +40,7 @@ async function loadGroups() {
     }
   }
   catch (error: any) {
-    toast.error('Failed to load groups', { description: error.message })
+    toast.error(error.message || '加载失败')
   }
   finally {
     isLoadingGroups.value = false
@@ -72,7 +64,7 @@ async function loadItems() {
     await loadQuotes()
   }
   catch (error: any) {
-    toast.error('Failed to load items', { description: error.message })
+    toast.error(error.message || '加载失败')
   }
   finally {
     isLoadingItems.value = false
@@ -86,7 +78,7 @@ async function loadQuotes() {
 
   isLoadingQuotes.value = true
   try {
-    await getGroupQuotes(selectedGroup.value.id, currentInterval.value)
+    await stockQuotes.getGroupQuotes(selectedGroup.value.id, currentInterval.value)
   }
   catch (error: any) {
     console.error('Failed to load quotes:', error)
@@ -109,7 +101,7 @@ async function handleRefresh() {
     toast.success('Quotes refreshed')
   }
   catch (error: any) {
-    toast.error('Failed to refresh quotes', { description: error.message })
+    toast.error(error.message || '刷新失败')
   } finally {
     isLoadingQuotes.value = false
   }
@@ -139,7 +131,7 @@ async function handleCreateGroup() {
     toast.success('Group created')
   }
   catch (error: any) {
-    toast.error('Failed to create group', { description: error.message })
+    toast.error(error.message || '创建失败')
   }
 }
 
@@ -157,27 +149,27 @@ async function handleDeleteGroup(group: WatchlistGroup) {
     toast.success('Group deleted')
   }
   catch (error: any) {
-    toast.error('Failed to delete group', { description: error.message })
+    toast.error(error.message || '删除失败')
   }
 }
 
 async function handleAddItem() {
-  if (!selectedGroup.value)
+  if (!selectedGroup.value || isAdding.value)
     return
 
+  isAdding.value = true
   try {
-    await watchlist.addItem(selectedGroup.value.id, newItem)
+    await watchlist.addItem(selectedGroup.value.id, { symbol: newItem.symbol })
     await loadItems()
     showAddItem.value = false
     newItem.symbol = ''
-    newItem.name = ''
-    newItem.exchange = ''
-    newItem.market = ''
-    newItem.notes = ''
-    toast.success('Item added')
+    toast.success('添加成功')
   }
   catch (error: any) {
-    toast.error('Failed to add item', { description: error.message })
+    toast.error(error.message || '添加失败')
+  }
+  finally {
+    isAdding.value = false
   }
 }
 
@@ -191,7 +183,7 @@ async function handleDeleteItem(item: WatchlistItem) {
     toast.success('Item removed')
   }
   catch (error: any) {
-    toast.error('Failed to remove item', { description: error.message })
+    toast.error(error.message || '删除失败')
   }
 }
 
@@ -274,24 +266,21 @@ onMounted(() => {
               <p class="text-sm text-muted-foreground">
                 {{ items.length }} items
               </p>
-              <Button size="sm" @click="showAddItem = true">
-                <Icon name="i-lucide-plus" class="mr-2 size-4" />
-                Add Item
-              </Button>
+              <div class="flex items-center gap-2">
+                <Button variant="outline" size="sm" :disabled="isLoadingQuotes" @click="handleRefresh">
+                  <Icon :name="isLoadingQuotes ? 'i-lucide-loader-2' : 'i-lucide-refresh-cw'" :class="['mr-2 size-4', isLoadingQuotes && 'animate-spin']" />
+                  Refresh
+                </Button>
+                <Button size="sm" @click="showAddItem = true">
+                  <Icon name="i-lucide-plus" class="mr-2 size-4" />
+                  Add
+                </Button>
+              </div>
             </div>
-
-            <WatchlistToolbar
-              v-if="items.length > 0"
-              :loading="isLoadingQuotes"
-              :current-interval="currentInterval"
-              @interval-change="handleIntervalChange"
-              @refresh="handleRefresh"
-              @filter="handleFilter"
-            />
 
             <WatchlistTable
               :items="items"
-              :quotes="quotes.value"
+              :quotes="stockQuotes.quotes.value"
               :loading="isLoadingItems"
               @view-detail="handleViewDetail"
               @delete-item="handleDeleteItem"
@@ -341,59 +330,26 @@ onMounted(() => {
         </DialogHeader>
         <div class="space-y-4 py-4">
           <div class="space-y-2">
-            <Label for="symbol">Symbol *</Label>
-            <Input id="symbol" v-model="newItem.symbol" placeholder="AAPL" />
-          </div>
-          <div class="space-y-2">
-            <Label for="item-name">Name</Label>
-            <Input id="item-name" v-model="newItem.name" placeholder="Apple Inc." />
-          </div>
-          <div class="grid grid-cols-2 gap-4">
-            <div class="space-y-2">
-              <Label for="type">Type</Label>
-              <Select v-model="newItem.type">
-                <SelectTrigger id="type">
-                  <SelectValue placeholder="Select type" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="stock">Stock</SelectItem>
-                  <SelectItem value="etf">ETF</SelectItem>
-                  <SelectItem value="index">Index</SelectItem>
-                  <SelectItem value="crypto">Crypto</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div class="space-y-2">
-              <Label for="exchange">Exchange</Label>
-              <Input id="exchange" v-model="newItem.exchange" placeholder="NASDAQ" />
-            </div>
-          </div>
-          <div class="grid grid-cols-2 gap-4">
-            <div class="space-y-2">
-              <Label for="market">Market</Label>
-              <Select v-model="newItem.market">
-                <SelectTrigger id="market">
-                  <SelectValue placeholder="Select market" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="US">US</SelectItem>
-                  <SelectItem value="HK">HK</SelectItem>
-                  <SelectItem value="CN">CN</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <div class="space-y-2">
-            <Label for="notes">Notes</Label>
-            <Textarea id="notes" v-model="newItem.notes" placeholder="Add notes..." rows="2" />
+            <Label for="symbol">Stock Symbol *</Label>
+            <Input
+              id="symbol"
+              v-model="newItem.symbol"
+              placeholder="AAPL, TSLA, MSFT..."
+              @keyup.enter="handleAddItem"
+              autofocus
+            />
+            <p class="text-xs text-muted-foreground">
+              Enter stock symbol (e.g., AAPL for Apple, TSLA for Tesla)
+            </p>
           </div>
         </div>
         <DialogFooter>
           <Button variant="outline" @click="showAddItem = false">
             Cancel
           </Button>
-          <Button @click="handleAddItem" :disabled="!newItem.symbol">
-            Add
+          <Button @click="handleAddItem" :disabled="!newItem.symbol || newItem.symbol.trim() === '' || isAdding">
+            <Icon v-if="isAdding" name="i-lucide-loader-2" class="mr-2 size-4 animate-spin" />
+            {{ isAdding ? '添加中...' : 'Add' }}
           </Button>
         </DialogFooter>
       </DialogContent>

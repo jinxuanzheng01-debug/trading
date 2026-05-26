@@ -35,11 +35,12 @@ class DataAPIClient:
     async def sync_kline(
         self, symbol: str, interval: str, data: List[Dict[str, Any]]
     ) -> Dict[str, Any]:
-        """同步K线数据到数据库"""
+        """同步K线数据到 Backend API 的 stock_quote_history 表"""
         try:
+            backend_url = getattr(settings, 'backend_api_url', 'http://api:4000')
             async with httpx.AsyncClient(timeout=60.0) as client:
                 response = await client.post(
-                    f"{self.base_url}/api/admin/kline/sync",
+                    f"{backend_url}/api/internal/klines/sync",
                     json={"symbol": symbol, "interval": interval, "data": data},
                 )
                 response.raise_for_status()

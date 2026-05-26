@@ -2,12 +2,26 @@ import yfinance as yf
 import asyncio
 from typing import List, Optional
 from datetime import datetime, timedelta
+import pandas as pd
 
 from .base_client import BaseStockDataProvider
 from ..api.models import QuoteData, KlineData
 from ..config import get_settings
 
 settings = get_settings()
+
+
+def safe_float(value, default=0.0):
+    """Safely convert value to float, handling Timestamp and None"""
+    if value is None:
+        return default
+    # Don't convert Timestamp to timestamp - skip Timestamp values entirely
+    if isinstance(value, pd.Timestamp):
+        return default  # Return default for Timestamp objects
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
 
 
 class YFinanceClient(BaseStockDataProvider):
@@ -18,29 +32,65 @@ class YFinanceClient(BaseStockDataProvider):
         self.max_retries = settings.yfinance_max_retries
 
     async def get_quote(self, symbol: str) -> QuoteData:
-        ticker = await asyncio.to_thread(self._get_ticker, symbol)
-        info = await asyncio.to_thread(lambda: ticker.info)
+        try:
+            ticker = await asyncio.to_thread(self._get_ticker, symbol)
+            info = await asyncio.to_thread(lambda: ticker.info)
+            fast_info = await asyncio.to_thread(lambda: ticker.fast_info)
 
-        fast_info = await asyncio.to_thread(lambda: ticker.fast_info)
+            current_price = fast_info.last_price
+            previous_close = fast_info.previous_close
 
-        current_price = fast_info.last_price
-        previous_close = fast_info.previous_close
+            # Safely get numeric values with defaults
+            price = safe_float(current_price)
+            prev_close = safe_float(previous_close, price)
 
-        return QuoteData(
-            symbol=symbol,
-            name=info.get("longName") or info.get("shortName"),
-            price=current_price,
-            change=current_price - previous_close,
-            changePercent=((current_price - previous_close) / previous_close * 100) if previous_close else 0,
-            volume=int(info.get("volume", 0)),
-            high=fast_info.day_high,
-            low=fast_info.day_low,
-            open=fast_info.day_open,
-            previousClose=previous_close,
-            marketCap=info.get("marketCap"),
-            currency=info.get("currency", "USD"),
-            timestamp=datetime.utcnow().isoformat()
-        )
+            # Get open price from info dict if fast_info doesn't have it
+            open_price = price  # Default to current price
+            if hasattr(fast_info, 'day_open') and fast_info.day_open is not None:
+                open_price = safe_float(fast_info.day_open, price)
+            elif 'regularMarketOpen' in info and info['regularMarketOpen'] is not None:
+                open_price = safe_float(info['regularMarketOpen'], price)
+            elif 'open' in info and info['open'] is not None:
+                open_price = safe_float(info['open'], price)
+
+            high = safe_float(fast_info.day_high, price) if hasattr(fast_info, 'day_high') and fast_info.day_high is not None else price
+            low = safe_float(fast_info.day_low, price) if hasattr(fast_info, 'day_low') and fast_info.day_low is not None else price
+            market_cap = info.get("marketCap")
+            volume = int(info.get("volume", 0)) if info.get("volume") else 0
+
+            return QuoteData(
+                symbol=symbol,
+                name=info.get("longName") or info.get("shortName") or symbol,
+                price=price,
+                change=price - prev_close,
+                changePercent=((price - prev_close) / prev_close * 100) if prev_close and prev_close != 0 else 0.0,
+                volume=volume,
+                high=high,
+                low=low,
+                open=open_price,
+                previousClose=prev_close,
+                marketCap=float(market_cap) if market_cap else None,
+                currency=info.get("currency", "USD"),
+                timestamp=datetime.utcnow().isoformat()
+            )
+        except Exception as e:
+            print(f"Error fetching quote for {symbol}: {e}")
+            # Return minimal data on error
+            return QuoteData(
+                symbol=symbol,
+                name=symbol,
+                price=0.0,
+                change=0.0,
+                changePercent=0.0,
+                volume=0,
+                high=0.0,
+                low=0.0,
+                open=0.0,
+                previousClose=0.0,
+                marketCap=None,
+                currency="USD",
+                timestamp=datetime.utcnow().isoformat()
+            )
 
     async def get_quotes(self, symbols: List[str]) -> List[QuoteData]:
         tasks = [self.get_quote(s) for s in symbols]

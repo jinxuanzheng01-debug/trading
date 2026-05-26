@@ -1,4 +1,5 @@
 import { pgTable, serial, text, timestamp, varchar, boolean, integer } from 'drizzle-orm/pg-core'
+import { stocks } from './schema-stock'
 
 export const users = pgTable('users', {
   id: serial('id').primaryKey(),
@@ -23,13 +24,9 @@ export const watchlistGroups = pgTable('watchlist_groups', {
 export const watchlistItems = pgTable('watchlist_items', {
   id: serial('id').primaryKey(),
   groupId: serial('group_id').notNull().references(() => watchlistGroups.id, { onDelete: 'cascade' }),
-  symbol: varchar('symbol', { length: 20 }).notNull(),
-  name: varchar('name', { length: 100 }),
-  type: varchar('type', { length: 20 }).default('stock'), // stock, etf, index, crypto
-  exchange: varchar('exchange', { length: 20 }), // NYSE, NASDAQ, SSE, HKEX
+  stockId: integer('stock_id').references(() => stocks.id),
   notes: text('notes'),
   sort_order: integer('sort_order').default(0),
-  market: varchar('market', { length: 20 }),
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
 })
@@ -73,5 +70,6 @@ export type NewWatchlistItem = typeof watchlistItems.$inferInsert
 export type AnalysisRun = typeof analysisRuns.$inferSelect
 export type BacktestRun = typeof backtestRuns.$inferSelect
 
-// Re-export types from schema-stock for convenience
+// Re-export tables and types from schema-stock
+export { stocks, stockQuotes, stockQuoteHistory } from './schema-stock'
 export type { StockQuote, NewStockQuote, StockQuoteHistory, NewStockQuoteHistory } from './schema-stock'

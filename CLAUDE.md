@@ -155,6 +155,88 @@ GET    /api/watchlist/groups/:id/items  # 获取指定分组的标的
 4. **JWT 密钥** - 生产环境需修改 `JWT_SECRET` 环境变量
 5. **数据库地址** - 默认为 `postgresql://admin:admin123@localhost:5432/trading_agent`
 
+## Docker 调试指南
+
+### 代码修改后必须重新构建镜像
+
+**重要**: 修改代码后，**必须**重新构建 Docker 镜像，`docker compose restart` 不会应用代码修改。
+
+```bash
+# 只修改了前端代码
+docker compose build web && docker compose up -d web
+
+# 只修改了后端代码
+docker compose build api && docker compose up -d api
+
+# 修改了多个服务
+docker compose build web api market-data && docker compose up -d web api market-data
+
+# 重新构建所有服务
+docker compose build && docker compose up -d
+```
+
+### 常见调试步骤
+
+1. **检查服务状态**
+   ```bash
+   docker compose ps
+   ```
+
+2. **查看服务日志**
+   ```bash
+   # 查看所有服务日志
+   docker compose logs
+
+   # 查看特定服务日志
+   docker compose logs -f api
+   docker compose logs -f market-data
+   docker compose logs -f web
+   ```
+
+3. **重启所有服务**
+   ```bash
+   docker compose restart
+   ```
+
+4. **完全重建**
+   ```bash
+   # 停止并删除容器
+   docker compose down
+
+   # 重新构建并启动
+   docker compose build
+   docker compose up -d
+   ```
+
+5. **进入容器调试**
+   ```bash
+   # 进入 API 容器
+   docker exec -it trading-agent-api sh
+
+   # 进入数据库容器
+   docker exec -it trading-agent-db psql -U admin -d trading_agent
+   ```
+
+### 网络问题排查
+
+如果容器间无法通信：
+
+1. 检查容器是否在同一网络：
+   ```bash
+   docker network inspect trading-agent_trading-net
+   ```
+
+2. 检查环境变量是否正确：
+   ```bash
+   docker exec trading-agent-api env | grep MARKET_DATA
+   # 应该显示: MARKET_DATA_API_BASE=http://market-data:8000
+   ```
+
+3. 从容器内测试连接：
+   ```bash
+   docker exec trading-agent-api wget -q -O- http://market-data:8000/api/health
+   ```
+
 ## 微服务架构
 
 ### market-data 服务 (端口 8000)

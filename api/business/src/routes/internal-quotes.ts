@@ -2,96 +2,75 @@ import { Hono } from 'hono'
 import { zValidator } from '@hono/zod-validator'
 import { z } from 'zod'
 import { db } from '../db'
-import { stockQuotes } from '../db/schema-stock'
-import { eq, inArray } from 'drizzle-orm'
+import { sql } from 'drizzle-orm'
 
 const internalQuotes = new Hono()
 
-// Simple schema for quotes update
-const quoteUpdateSchema = z.array(z.object({
+// POST /api/internal/klines/sync - 同步K线数据到 stock_quote_history（scheduler 调用）
+const klineSyncSchema = z.object({
   symbol: z.string(),
-  name: z.string().nullable().optional(),
-  price: z.number().nullable().optional(),
-  change: z.number().nullable().optional(),
-  changePercent: z.number().nullable().optional(),
-  volume: z.number().nullable().optional(),
-  high: z.number().nullable().optional(),
-  low: z.number().nullable().optional(),
-  open: z.number().nullable().optional(),
-  prevClose: z.number().nullable().optional(),
-  exchange: z.string().nullable().optional(),
-  market: z.string().optional(),
-  currency: z.string().optional(),
-}))
+  interval: z.string(),
+  data: z.array(z.object({
+    time: z.string(),
+    open: z.number(),
+    high: z.number(),
+    low: z.number(),
+    close: z.number(),
+    volume: z.number(),
+  })),
+})
 
-// POST /api/internal/quotes/batch-update - Batch update quotes cache (internal, for scheduler)
-internalQuotes.post('/quotes/batch-update', zValidator('json', quoteUpdateSchema), async (c) => {
-  const quotes = c.req.valid('json')
+internalQuotes.post('/klines/sync', zValidator('json', klineSyncSchema), async (c) => {
+  const { symbol, interval, data } = c.req.valid('json')
 
-  if (quotes.length === 0) {
-    return c.json({ success: true, updated: 0 })
-  }
+  // Ensure stock exists
+  await db.execute(sql`
+    INSERT INTO stocks (symbol, name) VALUES (${symbol}, ${symbol})
+    ON CONFLICT (symbol) DO NOTHING
+  `)
 
-  try {
-    let updatedCount = 0
-
-    for (const quote of quotes) {
-      try {
-        await db.insert(stockQuotes)
-          .values({
-            symbol: quote.symbol,
-            market: quote.market || quote.exchange || 'UNKNOWN',
-            name: quote.name || null,
-            type: null,
-            exchange: quote.exchange || null,
-            interval: '1d',
-            open: quote.open?.toString() || quote.prevClose?.toString() || null,
-            high: quote.high?.toString() || quote.price?.toString() || null,
-            low: quote.low?.toString() || quote.price?.toString() || null,
-            close: quote.price?.toString() || null,
-            volume: quote.volume || null,
-            amount: null,
-            change: quote.change?.toString() || null,
-            change_percent: quote.changePercent?.toString() || null,
-            turnover_rate: null,
-            prev_close: quote.prevClose?.toString() || null,
-            timestamp: new Date(),
-            data_date: new Date(),
-            updated_at: new Date(),
-          })
-          .onConflictDoUpdate({
-            target: [stockQuotes.symbol, stockQuotes.interval],
-            set: {
-              market: quote.market || quote.exchange || 'UNKNOWN',
-              name: quote.name || null,
-              exchange: quote.exchange || null,
-              open: quote.open?.toString() || quote.prevClose?.toString() || null,
-              high: quote.high?.toString() || quote.price?.toString() || null,
-              low: quote.low?.toString() || quote.price?.toString() || null,
-              close: quote.price?.toString() || null,
-              volume: quote.volume || null,
-              amount: null,
-              change: quote.change?.toString() || null,
-              change_percent: quote.changePercent?.toString() || null,
-              turnover_rate: null,
-              prev_close: quote.prevClose?.toString() || null,
-              timestamp: new Date(),
-              data_date: new Date(),
-              updated_at: new Date(),
-            },
-          })
-        updatedCount++
-      } catch (error) {
-        console.error(`Failed to update quote for ${quote.symbol}:`, error)
-        // Continue with next quote
+  let count = 0
+  for (const k of data) {
+    try {
+      await db.execute(sql`
+        INSERT INTO stock_quote_history (stock_id, interval, open, high, low, close, volume, timestamp)
+        SELECT s.id, ${interval}, ${String(k.open)}::numeric, ${String(k.high)}::numeric,
+          ${String(k.low)}::numeric, ${String(k.close)}::numeric,
+          ${k.volume}::bigint, ${new Date(k.time).toISOString()}::timestamp
+        FROM stocks s WHERE s.symbol = ${symbol}
+        ON CONFLICT (stock_id, interval, timestamp) DO NOTHING
+      `)
+      count++
+    } catch (err: any) {
+      if (!err.message?.includes('duplicate key') && !err.message?.includes('unique constraint')) {
+        console.error(`Failed to insert kline for ${symbol}:`, err)
       }
     }
-
-    return c.json({ success: true, updated: updatedCount })
-  } catch (error) {
-    console.error('Failed to batch update quotes:', error)
-    return c.json({ success: false, error: 'Failed to update quotes cache' }, 500)
   }
+
+  return c.json({ success: true, count })
+})
+
+// GET /api/internal/klines/latest?symbol=AAPL&interval=1d - 查询最新K线日期
+internalQuotes.get('/klines/latest', async (c) => {
+  const symbol = c.req.query('symbol')
+  const interval = c.req.query('interval') || '1d'
+
+  const rows = await db.execute(sql`
+    SELECT MAX(h.timestamp) as latest
+    FROM stock_quote_history h
+    JOIN stocks s ON h.stock_id = s.id
+    WHERE s.symbol = ${symbol} AND h.interval = ${interval}
+  `) as any[]
+
+  const latest = rows?.[0]?.latest || null
+  return c.json({ symbol, interval, latest_at: latest ? new Date(latest).toISOString() : null })
+})
+
+// GET /api/internal/stocks/symbols - 获取所有股票代码（scheduler 用）
+internalQuotes.get('/stocks/symbols', async (c) => {
+  const rows = await db.execute(sql`SELECT symbol FROM stocks ORDER BY symbol`) as any[]
+  return c.json({ symbols: rows.map((r: any) => r.symbol) })
 })
 
 export { internalQuotes }

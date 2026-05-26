@@ -46,5 +46,34 @@ class BackendAPIClient:
             logger.error(f"Failed to update quotes cache: {e}")
             return {"success": False, "error": str(e)}
 
+    async def get_all_stock_symbols(self) -> List[str]:
+        """获取 stocks 表中所有股票代码（不再依赖自选股列表）"""
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.get(
+                    f"{self.base_url}/api/internal/stocks/symbols"
+                )
+                response.raise_for_status()
+                symbols = response.json().get("symbols", [])
+                logger.info(f"Fetched {len(symbols)} symbols from stocks table")
+                return symbols
+        except httpx.HTTPError as e:
+            logger.error(f"Failed to fetch stock symbols: {e}")
+            return []
+
+    async def get_latest_kline(self, symbol: str, interval: str) -> dict:
+        """查询本地最新K线日期"""
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.get(
+                    f"{self.base_url}/api/internal/klines/latest",
+                    params={"symbol": symbol, "interval": interval},
+                )
+                response.raise_for_status()
+                return response.json()
+        except httpx.HTTPError as e:
+            logger.error(f"Failed to get latest kline for {symbol}/{interval}: {e}")
+            return {"latest_at": None}
+
 
 backend_api = BackendAPIClient()

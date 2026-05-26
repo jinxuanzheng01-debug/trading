@@ -2,16 +2,15 @@ import { Hono } from 'hono'
 import { zValidator } from '@hono/zod-validator'
 import { z } from 'zod'
 import { db } from '../db'
-import { watchlistGroups, watchlistItems } from '../db/schema'
-import { stockQuotes, stockQuoteHistory } from '../db/schema-stock'
+import { watchlistGroups, watchlistItems, stocks } from '../db/schema'
 import { authMiddleware } from '../middleware/auth'
-import { eq, and, desc, gt, lt, or, inArray } from 'drizzle-orm'
+import { eq, and, sql } from 'drizzle-orm'
 import { getQuotes, getKlines } from '../lib/market-data-client'
+import { ok, fail, ErrorCode } from '../lib/response'
 import '../types/hono'
 
 const watchlistQuotes = new Hono()
 
-// Apply auth middleware to all routes
 watchlistQuotes.use('*', authMiddleware)
 
 const reorderItemsSchema = z.object({
@@ -26,372 +25,142 @@ const klineQuerySchema = z.object({
   limit: z.coerce.number().min(1).max(1000).optional(),
 })
 
-// GET /api/watchlist-quotes/groups/:groupId/quotes - Get quotes for a watchlist group
+/** 将行情数据写入 stock_quotes 表 */
+async function saveQuotesToDB(quotes: Awaited<ReturnType<typeof getQuotes>>) {
+  for (const q of quotes) {
+    await db.execute(sql`
+      INSERT INTO stocks (symbol, name, exchange, type)
+      VALUES (${q.symbol}, ${q.name || null}, ${q.exchange || null}, ${q.type || 'stock'})
+      ON CONFLICT (symbol) DO UPDATE SET name = EXCLUDED.name, updated_at = NOW();
+
+      INSERT INTO stock_quotes (stock_id, interval,
+        open, high, low, close, volume, change, change_percent, prev_close,
+        timestamp, data_date, updated_at)
+      SELECT s.id, '1d',
+        ${String(q.prevClose)}::numeric, ${String(q.price)}::numeric, ${String(q.price)}::numeric, ${String(q.price)}::numeric,
+        ${q.volume || 0}::bigint, ${String(q.change)}::numeric, ${String(q.changePercent)}::numeric, ${String(q.prevClose)}::numeric,
+        NOW(), ${q.dataDate.toISOString()}::timestamp, NOW()
+      FROM stocks s WHERE s.symbol = ${q.symbol}
+      ON CONFLICT (stock_id, interval)
+      DO UPDATE SET
+        open = EXCLUDED.open, high = EXCLUDED.high, low = EXCLUDED.low, close = EXCLUDED.close,
+        volume = EXCLUDED.volume, change = EXCLUDED.change, change_percent = EXCLUDED.change_percent,
+        prev_close = EXCLUDED.prev_close, timestamp = NOW(), data_date = EXCLUDED.data_date, updated_at = NOW()
+    `)
+  }
+}
+
+// GET /api/watchlist-quotes/groups/:groupId/quotes
 watchlistQuotes.get('/groups/:groupId/quotes', async (c) => {
   const user = c.get('user')
   const groupId = Number(c.req.param('groupId'))
 
-  // Verify ownership
   const [group] = await db.select().from(watchlistGroups)
     .where(and(eq(watchlistGroups.id, groupId), eq(watchlistGroups.userId, user.userId)))
     .limit(1)
 
   if (!group) {
-    return c.json({ error: 'Group not found' }, 404)
+    return fail(c, ErrorCode.GROUP_NOT_FOUND)
   }
 
-  // Get all items in the group
-  const items = await db.select().from(watchlistItems)
+  const items = await db
+    .select({
+      id: watchlistItems.id,
+      groupId: watchlistItems.groupId,
+      stockId: watchlistItems.stockId,
+      symbol: stocks.symbol,
+      name: stocks.name,
+      nameCn: stocks.name_cn,
+      exchange: stocks.exchange,
+      market: stocks.market,
+      type: stocks.type,
+      sortOrder: watchlistItems.sort_order,
+      notes: watchlistItems.notes,
+      createdAt: watchlistItems.createdAt,
+      updatedAt: watchlistItems.updatedAt,
+    })
+    .from(watchlistItems)
+    .innerJoin(stocks, eq(watchlistItems.stockId, stocks.id))
     .where(eq(watchlistItems.groupId, groupId))
     .orderBy(watchlistItems.sort_order, watchlistItems.createdAt)
 
   if (items.length === 0) {
-    return c.json({ items: [], quotes: [] })
-  }
-
-  const symbols = items.map(item => item.symbol)
-
-  // Try to get quotes from cache first - only fetch the symbols we need
-  const cachedQuotes = await db.select().from(stockQuotes)
-    .where(
-      and(
-        inArray(stockQuotes.symbol, symbols),
-        eq(stockQuotes.interval, '1d')
-      )
-    )
-
-  const cachedQuotesMap = new Map(
-    cachedQuotes.map(quote => [`${quote.symbol}_${quote.interval}`, quote])
-  )
-
-  const staleSymbols: string[] = []
-  const freshQuotes: typeof cachedQuotes = []
-  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000)
-
-  for (const symbol of symbols) {
-    const cacheKey = `${symbol}_1d`
-    const cached = cachedQuotesMap.get(cacheKey)
-
-    if (!cached || !cached.updated_at || new Date(cached.updated_at) < oneHourAgo) {
-      staleSymbols.push(symbol)
-    } else {
-      freshQuotes.push(cached)
-    }
-  }
-
-  let finalQuotes = freshQuotes
-
-  // Fetch stale quotes from market-data service
-  if (staleSymbols.length > 0) {
-    try {
-      const freshMarketQuotes = await getQuotes(staleSymbols)
-
-      // Update cache with fresh data
-      for (const quote of freshMarketQuotes) {
-        await db.insert(stockQuotes)
-          .values({
-            symbol: quote.symbol,
-            market: quote.exchange || 'UNKNOWN',
-            name: quote.name || null,
-            type: quote.type || null,
-            exchange: quote.exchange || null,
-            interval: '1d',
-            open: quote.prevClose?.toString() || null,
-            high: quote.price?.toString() || null,
-            low: quote.price?.toString() || null,
-            close: quote.price?.toString() || null,
-            volume: quote.volume || null,
-            change: quote.change?.toString() || null,
-            change_percent: quote.changePercent?.toString() || null,
-            prev_close: quote.prevClose?.toString() || null,
-            timestamp: new Date(),
-            data_date: new Date(quote.dataDate),
-            updated_at: new Date(),
-          })
-          .onConflictDoUpdate({
-            target: [stockQuotes.symbol, stockQuotes.interval],
-            set: {
-              market: quote.exchange || 'UNKNOWN',
-              name: quote.name || null,
-              type: quote.type || null,
-              exchange: quote.exchange || null,
-              open: quote.prevClose?.toString() || null,
-              high: quote.price?.toString() || null,
-              low: quote.price?.toString() || null,
-              close: quote.price?.toString() || null,
-              volume: quote.volume || null,
-              change: quote.change?.toString() || null,
-              change_percent: quote.changePercent?.toString() || null,
-              prev_close: quote.prevClose?.toString() || null,
-              timestamp: new Date(),
-              data_date: new Date(quote.dataDate),
-              updated_at: new Date(),
-            },
-          })
-      }
-
-      // Get updated quotes from cache - only fetch the symbols we just updated
-      const updatedQuotes = await db.select().from(stockQuotes)
-        .where(
-          and(
-            inArray(stockQuotes.symbol, staleSymbols),
-            eq(stockQuotes.interval, '1d')
-          )
-        )
-
-      // Tag fresh quotes with timestamp for consistency
-      const freshQuotesWithTimestamp = updatedQuotes.map(q => ({
-        ...q,
-        fetchedAt: new Date()
-      }))
-
-      // Build consistent quote set - prefer fresh data over cached
-      const quotesMap = new Map<string, typeof freshQuotes[0]>()
-
-      // Add all cached quotes first
-      for (const quote of freshQuotes) {
-        quotesMap.set(quote.symbol, quote)
-      }
-
-      // Override with fresh quotes (more recent data)
-      for (const quote of freshQuotesWithTimestamp) {
-        quotesMap.set(quote.symbol, quote)
-      }
-
-      finalQuotes = Array.from(quotesMap.values())
-    } catch (error) {
-      console.error('Failed to fetch quotes from market-data service:', error)
-      // Continue with cached quotes if market-data service is unavailable
-    }
-  }
-
-  // Map quotes to items
-  const quotesMap = new Map(
-    finalQuotes.map(quote => [quote.symbol, quote])
-  )
-
-  const itemsWithQuotes = items.map(item => ({
-    ...item,
-    quote: quotesMap.get(item.symbol) || null,
-  }))
-
-  return c.json({
-    items: itemsWithQuotes,
-    quotes: finalQuotes,
-  })
-})
-
-// POST /api/watchlist-quotes/groups/:groupId/refresh - Force refresh quotes from market-data
-watchlistQuotes.post('/groups/:groupId/refresh', async (c) => {
-  const user = c.get('user')
-  const groupId = Number(c.req.param('groupId'))
-
-  // Verify ownership
-  const [group] = await db.select().from(watchlistGroups)
-    .where(and(eq(watchlistGroups.id, groupId), eq(watchlistGroups.userId, user.userId)))
-    .limit(1)
-
-  if (!group) {
-    return c.json({ error: 'Group not found' }, 404)
-  }
-
-  // Get all items in the group
-  const items = await db.select().from(watchlistItems)
-    .where(eq(watchlistItems.groupId, groupId))
-
-  if (items.length === 0) {
-    return c.json({ items: [], quotes: [] })
+    return ok(c, { items: [], quotes: [] })
   }
 
   const symbols = items.map(item => item.symbol)
 
   try {
-    // Fetch fresh quotes from market-data service
-    const freshMarketQuotes = await getQuotes(symbols)
+    const freshQuotes = await getQuotes(symbols)
+    saveQuotesToDB(freshQuotes).catch(err => console.error('Failed to save quotes to DB:', err))
 
-    // Update cache
-    for (const quote of freshMarketQuotes) {
-      await db.insert(stockQuotes)
-        .values({
-          symbol: quote.symbol,
-          market: quote.exchange || 'UNKNOWN',
-          name: quote.name || null,
-          type: quote.type || null,
-          exchange: quote.exchange || null,
-          interval: '1d',
-          open: quote.prevClose?.toString() || null,
-          high: quote.price?.toString() || null,
-          low: quote.price?.toString() || null,
-          close: quote.price?.toString() || null,
-          volume: quote.volume || null,
-          change: quote.change?.toString() || null,
-          change_percent: quote.changePercent?.toString() || null,
-          prev_close: quote.prevClose?.toString() || null,
-          timestamp: new Date(),
-          data_date: new Date(quote.dataDate),
-          updated_at: new Date(),
-        })
-        .onConflictDoUpdate({
-          target: [stockQuotes.symbol, stockQuotes.interval],
-          set: {
-            market: quote.exchange || 'UNKNOWN',
-            name: quote.name || null,
-            type: quote.type || null,
-            exchange: quote.exchange || null,
-            open: quote.prevClose?.toString() || null,
-            high: quote.price?.toString() || null,
-            low: quote.price?.toString() || null,
-            close: quote.price?.toString() || null,
-            volume: quote.volume || null,
-            change: quote.change?.toString() || null,
-            change_percent: quote.changePercent?.toString() || null,
-            prev_close: quote.prevClose?.toString() || null,
-            timestamp: new Date(),
-            data_date: new Date(quote.dataDate),
-            updated_at: new Date(),
-          },
-        })
-    }
+    const quotesMap = new Map(freshQuotes.map(quote => [quote.symbol, quote]))
+    const itemsWithQuotes = items.map(item => ({ ...item, quote: quotesMap.get(item.symbol) || null }))
 
-    // Get updated quotes from cache - only fetch the symbols we just updated
-    const updatedQuotes = await db.select().from(stockQuotes)
-      .where(
-        and(
-          inArray(stockQuotes.symbol, symbols),
-          eq(stockQuotes.interval, '1d')
-        )
-      )
-
-    const quotesMap = new Map(
-      updatedQuotes.map(quote => [quote.symbol, quote])
-    )
-
-    const itemsWithQuotes = items.map(item => ({
-      ...item,
-      quote: quotesMap.get(item.symbol) || null,
-    }))
-
-    return c.json({
-      items: itemsWithQuotes,
-      quotes: updatedQuotes,
-    })
+    return ok(c, { items: itemsWithQuotes, quotes: freshQuotes })
   } catch (error) {
-    console.error('Failed to refresh quotes:', error)
-    return c.json({ error: 'Failed to refresh quotes from market-data service' }, 503)
+    console.error('Failed to fetch quotes:', error)
+    return ok(c, { items: items.map(item => ({ ...item, quote: null })), quotes: [] })
   }
 })
 
-// PUT /api/watchlist-quotes/groups/:groupId/reorder - Reorder items in group
-watchlistQuotes.put('/groups/:groupId/reorder', zValidator('json', reorderItemsSchema), async (c) => {
+// POST /api/watchlist-quotes/groups/:groupId/refresh
+watchlistQuotes.post('/groups/:groupId/refresh', async (c) => {
   const user = c.get('user')
   const groupId = Number(c.req.param('groupId'))
-  const { itemOrders } = c.req.valid('json')
 
-  // Verify ownership
   const [group] = await db.select().from(watchlistGroups)
     .where(and(eq(watchlistGroups.id, groupId), eq(watchlistGroups.userId, user.userId)))
     .limit(1)
 
-  if (!group) {
-    return c.json({ error: 'Group not found' }, 404)
-  }
+  if (!group) return fail(c, ErrorCode.GROUP_NOT_FOUND)
 
-  // Check if all items exist and belong to this group
-  for (const { id, sort_order } of itemOrders) {
-    const [item] = await db.select().from(watchlistItems)
-      .where(and(eq(watchlistItems.id, id), eq(watchlistItems.groupId, groupId)))
-      .limit(1)
-
-    if (!item) {
-      return c.json({ error: `Item ${id} does not belong to this group` }, 400)
-    }
-
-    // Update sort_order
-    await db.update(watchlistItems)
-      .set({ sort_order, updatedAt: new Date() })
-      .where(eq(watchlistItems.id, id))
-  }
-
-  // Return updated items
-  const updatedItems = await db.select().from(watchlistItems)
+  const items = await db
+    .select({ symbol: stocks.symbol })
+    .from(watchlistItems)
+    .innerJoin(stocks, eq(watchlistItems.stockId, stocks.id))
     .where(eq(watchlistItems.groupId, groupId))
-    .orderBy(watchlistItems.sort_order, watchlistItems.createdAt)
 
-  return c.json(updatedItems)
+  if (items.length === 0) return ok(c, { items: [], quotes: [] })
+
+  const symbols = items.map(i => i.symbol)
+
+  try {
+    const freshQuotes = await getQuotes(symbols)
+    saveQuotesToDB(freshQuotes).catch(err => console.error('Failed to save quotes:', err))
+
+    const quotesMap = new Map(freshQuotes.map(quote => [quote.symbol, quote]))
+    const itemsWithQuotes = items.map(item => ({ ...item, quote: quotesMap.get(item.symbol) || null }))
+
+    return ok(c, { items: itemsWithQuotes, quotes: freshQuotes })
+  } catch (error) {
+    console.error('Failed to refresh quotes:', error)
+    return fail(c, ErrorCode.MARKET_DATA_UNAVAILABLE)
+  }
 })
 
-// GET /api/watchlist-quotes/items/:itemId/kline - Get K-line data for an item
+// GET /api/watchlist-quotes/items/:itemId/kline
 watchlistQuotes.get('/items/:itemId/kline', zValidator('query', klineQuerySchema), async (c) => {
   const user = c.get('user')
   const itemId = Number(c.req.param('itemId'))
   const { interval, limit } = c.req.valid('query')
 
-  // Verify ownership through group
-  const [item] = await db.select({
-    item: watchlistItems,
-  })
+  const [row] = await db
+    .select({ symbol: stocks.symbol })
     .from(watchlistItems)
+    .innerJoin(stocks, eq(watchlistItems.stockId, stocks.id))
     .innerJoin(watchlistGroups, eq(watchlistItems.groupId, watchlistGroups.id))
     .where(and(eq(watchlistItems.id, itemId), eq(watchlistGroups.userId, user.userId)))
     .limit(1)
 
-  if (!item) {
-    return c.json({ error: 'Item not found' }, 404)
-  }
-
-  const symbol = item.item.symbol
-  const queryLimit = limit || 100
+  if (!row) return fail(c, ErrorCode.ITEM_NOT_FOUND)
 
   try {
-    // Fetch K-line data from market-data service
-    const klines = await getKlines(symbol, interval, queryLimit)
-
-    // Also store in history table for cache
-    let insertedCount = 0
-    let errorCount = 0
-
-    for (const kline of klines) {
-      try {
-        await db.insert(stockQuoteHistory)
-          .values({
-            symbol: kline.symbol,
-            market: 'UNKNOWN', // Market-data service doesn't provide market in kline response
-            interval: kline.interval,
-            open: kline.open?.toString() || null,
-            high: kline.high?.toString() || null,
-            low: kline.low?.toString() || null,
-            close: kline.close?.toString() || null,
-            volume: kline.volume || null,
-            amount: null,
-            change: kline.close?.toString() || null, // Use close as change proxy
-            timestamp: new Date(kline.timestamp),
-          })
-          .onConflictDoNothing() // Don't overwrite existing historical data
-        insertedCount++
-      } catch (err) {
-        // Log errors but continue processing
-        errorCount++
-        const error = err as Error
-        // Only log non-duplicate key errors
-        if (!error.message.includes('duplicate key') && !error.message.includes('unique constraint')) {
-          console.error(`Failed to insert kline data for ${kline.symbol}:`, error)
-        }
-      }
-    }
-
-    // Log summary if there were issues
-    if (errorCount > 0) {
-      console.log(`Kline insertion summary for ${symbol}: ${insertedCount} inserted, ${errorCount} skipped/failed`)
-    }
-
-    return c.json({
-      symbol,
-      interval,
-      data: klines,
-    })
+    const klines = await getKlines(row.symbol, interval, limit || 100)
+    return ok(c, { symbol: row.symbol, interval, data: klines })
   } catch (error) {
     console.error('Failed to fetch kline data:', error)
-    return c.json({ error: 'Failed to fetch kline data from market-data service' }, 503)
+    return fail(c, ErrorCode.MARKET_DATA_UNAVAILABLE)
   }
 })
 
