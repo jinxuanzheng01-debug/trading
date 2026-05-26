@@ -1,7 +1,7 @@
 # 自选股功能设计文档
 
 **日期**: 2026-05-26
-**版本**: MVP v1.3
+**版本**: MVP v1.4
 **状态**: 设计已完成，待实施
 
 ## 1. 概述
@@ -14,15 +14,23 @@ Trading Agent 是一个面向散户投资者的 AI 辅助量化分析平台。�
 
 构建一个支持多市场（A股/港股/美股）的自选股系统，提供 T+1 行情展示、排序筛选功能。数据本地缓存，支持后续回测功能。
 
-### 1.3 MVP 范围
+### 1.3 数据维度
+
+支持三个时间维度的 K 线数据：
+- **日线 (1d)**：每日收盘后更新
+- **周线 (1w)**：每周收盘后更新
+- **月线 (1m)**：每月收盘后更新
+
+### 1.4 MVP 范围
 
 **包含功能：**
 - T+1 行情展示（昨收盘价、涨跌幅、成交量）
 - 排序和筛选（价格/涨跌幅/成交量）
 - 多市场支持，分市场定时更新
-- 本地数据缓存，支持回测
+- 本地数据缓存（日线/周线/月线），支持回测
 
 **暂不包含（Phase 2）：**
+- 分钟级 K 线（30m、1h、5m）
 - 实时行情和自动刷新
 - 迷你分时图 sparkline
 - 异动检测（价格/成交量异常）
@@ -50,7 +58,7 @@ Trading Agent 是一个面向散户投资者的 AI 辅助量化分析平台。�
 │  │  api/business (Hono + PostgreSQL)                    │    │
 │  │                                                       │    │
 │  │  GET /api/watchlist/groups/:id/quotes                │    │
-│  │    → 查询本地缓存 (watchlist_quotes)                  │    │
+│  │    → 查询 stock_quotes (基础设施层)                   │    │
 │  │    → 调用 market-data 补充缺失数据                     │    │
 │  │    → 聚合返回数据                                     │    │
 │  └───────────────────────┬─────────────────────────────┘    │
@@ -60,7 +68,7 @@ Trading Agent 是一个面向散户投资者的 AI 辅助量化分析平台。�
 │  ┌──────────────┐                   ┌──────────────┐      │
 │  │ 数据服务层    │                   │  定时任务层   │      │
 │  │ market-data  │                   │  分市场更新   │      │
-│  │ (FastAPI)    │                   │  → 入库缓存   │      │
+│  │ (FastAPI)    │                   │  1d/1w/1m     │      │
 │  └──────────────┘                   └──────────────┘      │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -70,7 +78,8 @@ Trading Agent 是一个面向散户投资者的 AI 辅助量化分析平台。�
 **查询自选股列表行情：**
 ```
 前端 → GET /api/watchlist/groups/:id/quotes
-     → 后端查询本地缓存 watchlist_quotes
+     → 后端查询 watchlist_items 获取标的列表
+     → 查询 stock_quotes 获取行情（按 symbol）
      → 缺失或过期的数据调用 market-data 补充
      → 聚合数据返回前端
 ```
@@ -79,78 +88,108 @@ Trading Agent 是一个面向散户投资者的 AI 辅助量化分析平台。�
 ```
 前端 → POST /api/watchlist/groups/:id/items
      → 后端保存到 watchlist_items 表
-     → 调用 market-data/quote 获取行情
-     → 存入 watchlist_quotes
+     → 调用 market-data 获取 K 线数据（1d/1w/1m）
+     → 存入 stock_quotes 和 stock_quote_history
      → 返回结果
 ```
 
 **定时更新（分市场）：**
 ```
-A 股 15:35 → 调用 market-data → 更新 watchlist_quotes + watchlist_quote_history
-港股 16:35 → 调用 market-data → 更新 watchlist_quotes + watchlist_quote_history
-美股 04:35 → 调用 market-data → 更新 watchlist_quotes + watchlist_quote_history
+A 股 15:35 → 调用 market-data → 更新 1d/1w/1m → 入库
+港股 16:35 → 调用 market-data → 更新 1d/1w/1m → 入库
+美股 04:35 → 调用 market-data → 更新 1d/1w/1m → 入库
 ```
 
 ## 3. 数据库设计
 
-### 3.1 新增表：watchlist_quotes（最新缓存）
+### 3.1 基础设施层：股票行情表
 
+**stock_quotes（最新缓存，热数据）**
 ```sql
--- 自选股最新行情缓存
-CREATE TABLE watchlist_quotes (
-  item_id UUID PRIMARY KEY REFERENCES watchlist_items(id) ON DELETE CASCADE,
-  symbol VARCHAR(50) NOT NULL,
-  price DECIMAL(12, 4),
+-- 股票行情最新数据缓存（基础设施层）
+CREATE TABLE stock_quotes (
+  symbol VARCHAR(50) PRIMARY KEY,
+  market VARCHAR(20) NOT NULL,         -- CN/US/HK
+  name VARCHAR(100),
+  type VARCHAR(20),                    -- stock/etf/index/crypto
+  exchange VARCHAR(50),
+  interval VARCHAR(10) NOT NULL,       -- 1d/1w/1m
+  open DECIMAL(12, 4),
+  high DECIMAL(12, 4),
+  low DECIMAL(12, 4),
+  close DECIMAL(12, 4),
+  volume BIGINT,
+  amount BIGINT,
   change DECIMAL(12, 4),
   change_percent DECIMAL(8, 4),
-  volume BIGINT,
-  market_cap BIGINT,
-  prev_close DECIMAL(12, 4),
-  data_date DATE NOT NULL,
-  updated_at TIMESTAMPTZ DEFAULT NOW()
+  turnover_rate DECIMAL(8, 4),         -- 换手率
+  timestamp TIMESTAMPTZ NOT NULL,      -- K线时间
+  data_date DATE NOT NULL,             -- 数据日期
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(symbol, interval)
 );
 
-CREATE INDEX idx_quotes_symbol ON watchlist_quotes(symbol);
+CREATE INDEX idx_stock_quotes_market ON stock_quotes(market);
+CREATE INDEX idx_stock_quotes_interval ON stock_quotes(interval);
 ```
 
-### 3.2 新增表：watchlist_quote_history（历史数据）
-
+**stock_quote_history（历史数据，冷数据）**
 ```sql
--- 自选股历史数据（回测用）
-CREATE TABLE watchlist_quote_history (
+-- 股票历史 K 线数据（基础设施层，回测用）
+CREATE TABLE stock_quote_history (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  item_id UUID NOT NULL REFERENCES watchlist_items(id) ON DELETE CASCADE,
   symbol VARCHAR(50) NOT NULL,
-  price DECIMAL(12, 4),
+  market VARCHAR(20) NOT NULL,         -- CN/US/HK
+  interval VARCHAR(10) NOT NULL,       -- 1d/1w/1m
+  open DECIMAL(12, 4),
+  high DECIMAL(12, 4),
+  low DECIMAL(12, 4),
+  close DECIMAL(12, 4),
+  volume BIGINT,
+  amount BIGINT,
   change DECIMAL(12, 4),
   change_percent DECIMAL(8, 4),
-  volume BIGINT,
-  data_date DATE NOT NULL,
+  timestamp TIMESTAMPTZ NOT NULL,      -- K线时间
   created_at TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE(item_id, data_date)
+  UNIQUE(symbol, market, interval, timestamp)
 );
 
-CREATE INDEX idx_history_item_date ON watchlist_quote_history(item_id, data_date DESC);
-CREATE INDEX idx_history_symbol_date ON watchlist_quote_history(symbol, data_date DESC);
+CREATE INDEX idx_history_symbol_interval_time ON stock_quote_history(symbol, interval, timestamp DESC);
 ```
 
-### 3.3 修改现有表：watchlist_items
+### 3.2 业务层：自选股表
 
+**修改 watchlist_items**
 ```sql
 -- 添加排序字段
 ALTER TABLE watchlist_items ADD COLUMN IF NOT EXISTS sort_order INTEGER DEFAULT 0;
 
--- 添加市场字段
+-- 添加市场字段（如果还没有）
 ALTER TABLE watchlist_items ADD COLUMN IF NOT EXISTS market VARCHAR(20);
 -- 市场值: 'CN' (A股), 'US' (美股), 'HK' (港股)
 ```
 
-### 3.4 数据保留策略
+**关系说明：**
+- `watchlist_items.symbol` → `stock_quotes.symbol`（引用关系）
+- 删除自选股标的时，**不删除** stock_quotes 数据（通用基础设施）
+- 添加自选股标的时，如果 stock_quotes 已有数据则直接使用
+
+### 3.3 数据保留策略
 
 | 表 | 保留策略 | 用途 |
 |----|---------|------|
-| watchlist_quotes | 仅保留最新一条 | 前端展示 |
-| watchlist_quote_history | 永久保留 | 回测、历史分析 |
+| stock_quotes | 仅保留最新（每 symbol 每 interval 一条） | 前端展示 |
+| stock_quote_history | 永久保留 | 回测、历史分析 |
+
+### 3.4 历史数据初始拉取
+
+| 周期 | 建议起始时间 | 数据量估算 |
+|------|-------------|-----------|
+| 日线 (1d) | 1 年前 | ~250 条/股票 |
+| 周线 (1w) | 3 年前 | ~150 条/股票 |
+| 月线 (1m) | 5 年前 | ~60 条/股票 |
+
+首次添加标的时，后台异步拉取历史数据。
 
 ## 4. API 接口设计
 
@@ -176,13 +215,15 @@ GET /api/watchlist/groups/:groupId/quotes
       "type": "stock",
       "exchange": "NASDAQ",
       "market": "US",
-      "price": 178.52,
+      "interval": "1d",
+      "open": 177.80,
+      "high": 179.00,
+      "low": 177.50,
+      "close": 178.52,
+      "volume": 52340000,
       "change": 2.35,
       "changePercent": 1.33,
-      "volume": 52340000,
-      "marketCap": 2780000000000,
-      "prevClose": 176.17,
-      "dataDate": "2026-05-23",
+      "timestamp": "2026-05-23T04:00:00Z",
       "sortOrder": 0
     }
   ],
@@ -221,6 +262,14 @@ POST /api/watchlist/groups/:groupId/refresh
 }
 ```
 
+### 4.4 标的详情接口（新增）
+
+```
+GET /api/watchlist/items/:itemId?interval=1w
+```
+
+支持查询不同周期的 K 线数据。
+
 ## 5. 定时任务设计
 
 ### 5.1 分市场更新时间
@@ -234,20 +283,20 @@ POST /api/watchlist/groups/:groupId/refresh
 ### 5.2 任务流程
 
 ```
-1. 查询该市场的所有自选股标的
-2. 批量调用 market-data/quotes 接口
-3. 更新 watchlist_quotes (最新数据，UPSERT)
-4. 插入 watchlist_quote_history (历史数据)
+1. 查询该市场的所有标的（从 stock_quotes 获取 symbol 列表）
+2. 批量调用 market-data/kline 接口获取 1d/1w/1m 数据
+3. 更新 stock_quotes (最新数据，UPSERT)
+4. 插入 stock_quote_history (历史数据)
 5. 记录更新日志
 ```
 
 ### 5.3 数据来源
 
-| 市场 | 数据源 |
-|------|--------|
-| A股 | AkShare |
-| 美股 | yfinance |
-| 港股 | yfinance |
+| 市场 | 数据源 | 支持周期 |
+|------|--------|----------|
+| A股 | AkShare | 1d/1w/1m |
+| 美股 | yfinance | 1d/1w/1m |
+| 港股 | yfinance | 1d/1w/1m |
 
 ### 5.4 错误处理
 
@@ -262,13 +311,13 @@ POST /api/watchlist/groups/:groupId/refresh
 ```
 pages/watchlist/index.vue
 ├── WatchlistSidebar      (分组列表)
-├── WatchlistToolbar      (工具栏：排序/筛选/刷新)
+├── WatchlistToolbar      (工具栏：排序/筛选/刷新/周期切换)
 ├── WatchlistTable        (数据表格)
 │   ├── SymbolColumn      (代码+名称+类型标签)
-│   ├── PriceColumn       (价格+涨跌幅)
+│   ├── PriceColumn       (OHLC + 涨跌幅)
 │   ├── VolumeColumn      (成交量)
 │   └── ActionsColumn     (操作)
-└── StockDetailDialog     (标的详情弹窗)
+└── StockDetailDialog     (标的详情弹窗 + K线图)
 ```
 
 ### 6.2 新增功能
@@ -278,12 +327,13 @@ pages/watchlist/index.vue
 | 点击列标题排序 | 价格/涨跌幅/成交量，支持升序/降序 |
 | 拖拽排序 | 手动拖拽调整顺序 |
 | 筛选器 | 按类型/涨跌幅/市场筛选 |
+| 周期切换 | 日线/周线/月线切换 |
 | 手动刷新 | 立即从 market-data 获取最新数据 |
 
 ### 6.3 排序选项
 
 - 默认（用户自定义 sort_order）
-- 价格（高→低 / 低→高）
+- 收盘价（高→低 / 低→高）
 - 涨跌幅（高→低 / 低→高）
 - 成交量（高→低）
 
@@ -314,7 +364,8 @@ pages/watchlist/index.vue
 
 | 场景 | 处理方式 |
 |------|----------|
-| 数据超过 1 天未更新 | 显示 "数据已过期" 标签，建议手动刷新 |
+| 日线超过 1 天未更新 | 显示 "数据已过期" 标签 |
+| 周线超过 1 周未更新 | 显示 "数据已过期" 标签 |
 
 ## 8. 性能考虑
 
@@ -325,36 +376,46 @@ pages/watchlist/index.vue
 
 ### 8.2 后端优化
 
-- **本地缓存优先**: 查询先走本地数据库，减少对 market-data 的依赖
+- **本地缓存优先**: 查询先走 stock_quotes，减少对 market-data 的依赖
 - **批量更新**: 定时任务使用批量接口
 - **数据库索引**: 已覆盖常用查询场景
+
+### 8.3 时序数据库优化（未来）
+
+- 考虑迁移到 TimescaleDB（已规划）
+- 利用分区表和压缩功能
 
 ## 9. 实施计划
 
 ### 9.1 后端任务
 
 1. **数据库迁移**
-   - 新建 `watchlist_quotes` 表
-   - 新建 `watchlist_quote_history` 表
+   - 新建 `stock_quotes` 表
+   - 新建 `stock_quote_history` 表
    - 添加 `sort_order`、`market` 字段到 `watchlist_items`
 
 2. **新增 API 接口** (`api/business`)
    - `GET /api/watchlist/groups/:id/quotes`
    - `PUT /api/watchlist/groups/:id/reorder`
    - `POST /api/watchlist/groups/:id/refresh`
+   - `GET /api/watchlist/items/:id?interval=1w`
 
-3. **定时任务** (scheduler 服务)
-   - A 股 15:35 更新任务
-   - 港股 16:35 更新任务
-   - 美股 04:35 更新任务
+3. **market-data 服务增强**
+   - 支持多周期 K 线接口（1d/1w/1m）
+   - 批量查询优化
 
-4. **单元测试**
+4. **定时任务** (scheduler 服务)
+   - A 股 15:35 更新任务（1d/1w/1m）
+   - 港股 16:35 更新任务（1d/1w/1m）
+   - 美股 04:35 更新任务（1d/1w/1m）
+
+5. **单元测试**
 
 ### 9.2 前端任务
 
 1. **扩展 watchlist 页面**
    - 调用新的 `/quotes` 接口
-   - 显示行情数据
+   - 显示 OHLC 行情数据
 
 2. **实现排序功能**
    - 点击列标题排序
@@ -363,20 +424,25 @@ pages/watchlist/index.vue
 3. **实现筛选功能**
    - 类型/涨跌幅/市场筛选
 
-4. **手动刷新按钮**
+4. **周期切换**
+   - 日线/周线/月线切换
 
-5. **样式优化**
+5. **手动刷新按钮**
+
+6. **样式优化**
    - 涨跌幅颜色（红涨绿跌 / 绿涨红跌可配置）
 
 ### 9.3 测试任务
 
 1. 多市场数据验证（A股/港股/美股）
-2. 排序和筛选功能测试
-3. 定时任务测试
-4. 边界情况测试
+2. 多周期数据验证（1d/1w/1m）
+3. 排序和筛选功能测试
+4. 定时任务测试
+5. 边界情况测试
 
 ## 10. 后续扩展 (Phase 2)
 
+- **分钟级 K 线**: 30m、1h、5m
 - **实时行情**: WebSocket 推送或短轮询
 - **迷你分时图**: sparkline 显示日内走势
 - **异动检测**: 价格/成交量异常检测和通知
@@ -384,7 +450,8 @@ pages/watchlist/index.vue
 - **公告摘要**: 智能摘要重要公告
 - **更多技术指标**: MACD、KDJ、RSI 等
 - **多股同列**: 对比视图
-- **回测功能**: 基于 watchlist_quote_history 的策略回测
+- **回测功能**: 基于 stock_quote_history 的策略回测
+- **TimescaleDB**: 迁移到时序数据库
 
 ## 11. 附录
 
@@ -402,3 +469,4 @@ pages/watchlist/index.vue
 | 2026-05-26 | v1.1 | 简化为 T+1 数据，增加缓存表和定时任务 |
 | 2026-05-26 | v1.2 | 极简版：去除缓存表，直接调用 market-data |
 | 2026-05-26 | v1.3 | 加回缓存表，支持回测；分市场定时更新 |
+| 2026-05-26 | v1.4 | 通用基础设施层（stock_quotes/history）；支持 1d/1w/1m 三周期 |
