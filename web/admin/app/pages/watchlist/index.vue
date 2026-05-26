@@ -5,23 +5,42 @@ definePageMeta({
   middleware: 'auth',
 })
 
+type Interval = '1d' | '1w' | '1M'
+
 const watchlist = useWatchlist()
+
+// Import useStockQuotes inline to avoid type issues
+const { getGroupQuotes, getItemKline, quotes, loading } = (await import('@/composables/useStockQuotes')).useStockQuotes()
+
+const stockQuotes = {
+  getGroupQuotes,
+  getItemKline,
+  quotes,
+  loading,
+}
 
 const groups = ref<WatchlistGroup[]>([])
 const selectedGroup = ref<WatchlistGroup | null>(null)
 const items = ref<WatchlistItem[]>([])
-const isLoading = ref(false)
+const isLoadingGroups = ref(false)
+const isLoadingItems = ref(false)
+const isLoadingQuotes = ref(false)
 
 // Dialog states
 const showCreateGroup = ref(false)
 const showAddItem = ref(false)
+const showStockDetail = ref(false)
+const selectedStock = ref<WatchlistItem | null>(null)
 
 // Form data
 const newGroup = reactive({ name: '', description: '' })
-const newItem = reactive({ symbol: '', name: '', type: 'stock' as const, exchange: '', notes: '' })
+const newItem = reactive({ symbol: '', name: '', type: 'stock' as const, exchange: '', market: '', notes: '' })
+
+// Current interval for chart
+const currentInterval = ref<Interval>('1d')
 
 async function loadGroups() {
-  isLoading.value = true
+  isLoadingGroups.value = true
   try {
     groups.value = await watchlist.getGroups()
     if (groups.value.length > 0 && !selectedGroup.value) {
@@ -32,18 +51,69 @@ async function loadGroups() {
     toast.error('Failed to load groups', { description: error.message })
   }
   finally {
-    isLoading.value = false
+    isLoadingGroups.value = false
   }
 }
 
-async function selectGroup(group: WatchlistGroup) {
+async function selectGroup(group: WatchlistGroup | undefined) {
+  if (!group) return
   selectedGroup.value = group
+  await loadItems()
+}
+
+async function loadItems() {
+  if (!selectedGroup.value)
+    return
+
+  isLoadingItems.value = true
   try {
-    items.value = await watchlist.getItems(group.id)
+    items.value = await watchlist.getItems(selectedGroup.value.id)
+    // Load quotes for the items
+    await loadQuotes()
   }
   catch (error: any) {
     toast.error('Failed to load items', { description: error.message })
   }
+  finally {
+    isLoadingItems.value = false
+  }
+}
+
+async function loadQuotes() {
+  if (!items.value.length) {
+    return
+  }
+
+  isLoadingQuotes.value = true
+  try {
+    await getGroupQuotes(items.value)
+  }
+  catch (error: any) {
+    console.error('Failed to load quotes:', error)
+    // Don't show toast for quote loading errors, just log them
+  }
+  finally {
+    isLoadingQuotes.value = false
+  }
+}
+
+async function handleRefresh() {
+  await loadQuotes()
+  toast.success('Quotes refreshed')
+}
+
+function handleIntervalChange(interval: Interval) {
+  currentInterval.value = interval
+}
+
+function handleFilter() {
+  // Placeholder for filter functionality
+  toast.info('Filter functionality coming soon')
+}
+
+function handleViewDetail(item: WatchlistItem) {
+  selectedStock.value = item
+  showStockDetail.value = true
 }
 
 async function handleCreateGroup() {
@@ -84,11 +154,12 @@ async function handleAddItem() {
 
   try {
     await watchlist.addItem(selectedGroup.value.id, newItem)
-    await selectGroup(selectedGroup.value)
+    await loadItems()
     showAddItem.value = false
     newItem.symbol = ''
     newItem.name = ''
     newItem.exchange = ''
+    newItem.market = ''
     newItem.notes = ''
     toast.success('Item added')
   }
@@ -103,9 +174,7 @@ async function handleDeleteItem(item: WatchlistItem) {
 
   try {
     await watchlist.deleteItem(item.id)
-    if (selectedGroup.value) {
-      await selectGroup(selectedGroup.value)
-    }
+    await loadItems()
     toast.success('Item removed')
   }
   catch (error: any) {
@@ -137,7 +206,7 @@ onMounted(() => {
           <CardTitle>Groups</CardTitle>
         </CardHeader>
         <CardContent>
-          <div v-if="isLoading" class="flex items-center justify-center py-4">
+          <div v-if="isLoadingGroups" class="flex items-center justify-center py-4">
             <Icon name="i-lucide-loader-2" class="size-6 animate-spin text-muted-foreground" />
           </div>
           <div v-else-if="groups.length === 0" class="text-center py-4 text-sm text-muted-foreground">
@@ -149,7 +218,7 @@ onMounted(() => {
               :key="group.id"
               class="flex items-center justify-between rounded-lg border p-3 cursor-pointer transition-colors"
               :class="selectedGroup?.id === group.id ? 'bg-primary/10 border-primary' : 'hover:bg-muted/50'"
-              @click="selectGroup(group)"
+              @click="() => selectGroup(group)"
             >
               <div class="min-w-0">
                 <p class="font-medium truncate">{{ group.name }}</p>
@@ -198,45 +267,22 @@ onMounted(() => {
               </Button>
             </div>
 
-            <div v-if="items.length === 0" class="text-center py-12 text-muted-foreground">
-              No items in this group yet
-            </div>
+            <WatchlistToolbar
+              v-if="items.length > 0"
+              :loading="isLoadingQuotes"
+              :current-interval="currentInterval"
+              @interval-change="handleIntervalChange"
+              @refresh="handleRefresh"
+              @filter="handleFilter"
+            />
 
-            <Table v-else>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Symbol</TableHead>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Exchange</TableHead>
-                  <TableHead class="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                <TableRow v-for="item in items" :key="item.id">
-                  <TableCell class="font-medium">
-                    {{ item.symbol }}
-                  </TableCell>
-                  <TableCell>{{ item.name || '-' }}</TableCell>
-                  <TableCell>
-                    <Badge variant="secondary">
-                      {{ item.type }}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>{{ item.exchange || '-' }}</TableCell>
-                  <TableCell class="text-right">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      class="size-8 text-destructive"
-                      @click="handleDeleteItem(item)"
-                    >
-                      <Icon name="i-lucide-trash-2" class="size-4" />
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              </TableBody>
-            </Table>
+            <WatchlistTable
+              :items="items"
+              :quotes="quotes.value"
+              :loading="isLoadingItems"
+              @view-detail="handleViewDetail"
+              @delete-item="handleDeleteItem"
+            />
           </div>
         </CardContent>
       </Card>
@@ -309,6 +355,21 @@ onMounted(() => {
               <Input id="exchange" v-model="newItem.exchange" placeholder="NASDAQ" />
             </div>
           </div>
+          <div class="grid grid-cols-2 gap-4">
+            <div class="space-y-2">
+              <Label for="market">Market</Label>
+              <Select v-model="newItem.market">
+                <SelectTrigger id="market">
+                  <SelectValue placeholder="Select market" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="US">US</SelectItem>
+                  <SelectItem value="HK">HK</SelectItem>
+                  <SelectItem value="CN">CN</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
           <div class="space-y-2">
             <Label for="notes">Notes</Label>
             <Textarea id="notes" v-model="newItem.notes" placeholder="Add notes..." rows="2" />
@@ -324,5 +385,11 @@ onMounted(() => {
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    <!-- Stock Detail Dialog -->
+    <StockDetailDialog
+      v-model:open="showStockDetail"
+      :item="selectedStock"
+    />
   </div>
 </template>
