@@ -120,6 +120,11 @@
   --vis-tooltip-shadow-color: none !important;
   --vis-tooltip-backdrop-filter: none !important;
   --vis-tooltip-padding: none !important;
+
+  /* 涨跌色彩 */
+  --color-up: oklch(0.65 0.15 160);
+  --color-down: oklch(0.60 0.20 25);
+  --color-flat: oklch(0.55 0 0);
 }
 
 .dark {
@@ -164,6 +169,11 @@
   --vis-tooltip-shadow-color: none !important;
   --vis-tooltip-backdrop-filter: none !important;
   --vis-tooltip-padding: none !important;
+
+  /* 涨跌色彩 - dark mode */
+  --color-up: oklch(0.65 0.15 160);
+  --color-down: oklch(0.60 0.20 25);
+  --color-flat: oklch(0.55 0 0);
 }
 
 
