@@ -345,6 +345,306 @@ pages/watchlist/index.vue
 - 按涨跌幅：涨幅>5% / 跌幅>5% / 平盘
 - 按市场：A股 / 港股 / 美股
 
+## 6.5 UI 设计系统（基于项目现有设计）
+
+### 6.5.1 设计基础
+
+项目使用 **shadcn-vue (New York 风格)** + **TailwindCSS v4** + **oklch 色彩空间**
+
+- **字体**: Geist (正文) / Geist Mono (代码)
+- **色彩**: Neutral 基础色系 + oklach 色彩空间
+- **主题**: Light / Dark 双主题支持
+- **组件**: shadcn-vue 组件库
+- **图标**: Lucide Vue
+
+### 6.5.2 色彩使用
+
+**使用项目现有色彩 Token**（无需自定义）：
+
+```css
+/* 项目已有色彩（直接使用） */
+--primary: oklch(0.205 0 0);           /* 主色 - 中性灰 */
+--primary-foreground: oklch(0.985 0 0);
+--muted: oklch(0.97 0 0);              /* 弱化背景 */
+--muted-foreground: oklch(0.556 0 0);   /* 弱化文字 */
+--accent: oklch(0.97 0 0);             /* 强调背景 */
+--destructive: oklch(0.577 0.245 27.325); /* 危险色 - 红 */
+--border: oklch(0.922 0 0);            /* 边框 */
+--card: oklch(1 0 0);                  /* 卡片背景 */
+--foreground: oklch(0.145 0 0);        /* 前景文字 */
+
+/* Dark mode（自动切换） */
+.dark --primary: oklch(0.922 0 0);
+.dark --card: oklch(0.205 0 0);
+.dark --foreground: oklch(0.985 0 0);
+```
+
+**涨跌色彩（新增 CSS 变量）**：
+```css
+/* 在 tailwind.css 或 themes.css 中添加 */
+--color-up: oklch(0.65 0.15 160);      /* 涨 - 绿色 */
+--color-down: oklch(0.60 0.20 25);     /* 跌 - 红色 */
+--color-flat: oklch(0.55 0 0);         /* 平 - 灰色 */
+```
+
+**可选主题色**（如需突出金融属性）：
+- `.color-amber` - 琥珀色（财富/信任感）
+- `.color-blue` - 蓝色（科技/专业）
+
+### 6.5.3 字体使用
+
+**使用项目现有字体**：
+```css
+--font-sans: "Geist", Arial, ui-sans-serif, system-ui, sans-serif;
+--font-mono: "Geist Mono", ui-monospace, Menlo, Monaco, Consolas, monospace;
+```
+
+**数值等宽**：
+```css
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+```
+
+### 6.5.4 shadcn-vue 组件使用
+
+**按钮**：
+```vue
+<!-- 主要操作 -->
+<Button class="bg-primary text-primary-foreground">
+  添加股票
+</Button>
+
+<!-- 次要操作 -->
+<Button variant="outline">
+  取消
+</Button>
+
+<!-- 危险操作 -->
+<Button variant="destructive">
+  删除
+</Button>
+```
+
+**输入框**：
+```vue
+<Input placeholder="搜索股票代码或名称" />
+```
+
+**表格**：
+```vue
+<Table>
+  <TableHeader>
+    <TableRow>
+      <TableHead>代码</TableHead>
+      <TableHead class="text-right">最新价</TableHead>
+      <TableHead class="text-right">涨跌幅</TableHead>
+    </TableRow>
+  </TableHeader>
+  <TableBody>
+    <!-- 内容 -->
+  </TableBody>
+</Table>
+```
+
+**标签**：
+```vue
+<!-- 类型标签 -->
+<Badge variant="secondary">股票</Badge>
+
+<!-- 涨跌标签（动态类） -->
+<Badge :class="change > 0 ? 'text-green-600' : 'text-red-600'">
+  {{ change }}%
+</Badge>
+```
+
+**下拉菜单**：
+```vue
+<DropdownMenu>
+  <DropdownMenuTrigger>
+    <Button variant="ghost" size="icon">
+      <Icon name="more-vertical" />
+    </Button>
+  </DropdownMenuTrigger>
+  <DropdownMenuContent>
+    <DropdownMenuItem>编辑</DropdownMenuItem>
+    <DropdownMenuItem>删除</DropdownMenuItem>
+  </DropdownMenuContent>
+</DropdownMenu>
+```
+
+**Dialog（弹窗）**：
+```vue
+<Dialog>
+  <DialogTrigger>
+    <Button>查看详情</Button>
+  </DialogTrigger>
+  <DialogContent>
+    <DialogHeader>
+      <DialogTitle>股票详情</DialogTitle>
+    </DialogHeader>
+    <!-- 内容 -->
+  </DialogContent>
+</Dialog>
+```
+
+### 6.5.5 响应式布局
+
+**Tailwind 断点**（项目标准）：
+```css
+sm: 640px   /* 手机横屏 */
+md: 768px   /* 平板 */
+lg: 1024px  /* 桌面 */
+xl: 1280px  /* 大桌面 */
+2xl: 1536px /* 超大屏 */
+3xl: 1600px /* 项目自定义 */
+```
+
+**布局策略**：
+- Mobile-first（默认移动端）
+- `< lg`: 侧边栏隐藏，抽屉式
+- `≥ lg`: 侧边栏固定显示
+
+### 6.5.6 图标
+
+使用 **Lucide Vue**（项目已配置）：
+```vue
+<script setup>
+import { TrendingUp, TrendingDown, Search, Plus, MoreVertical } from 'lucide-vue-next'
+</script>
+
+<template>
+  <Icon :name="Search" />
+  <!-- 或 -->
+  <Search :size="16" />
+</template>
+```
+
+### 6.5.7 K 线图表
+
+**推荐库**：
+- **ApexCharts**（项目已有集成，在 VisProvider 中）
+- 或 **lightweight-charts**（TradingView 开源）
+
+**配置要点**：
+```typescript
+{
+  chart: {
+    type: 'candlestick',
+    height: 400,
+    toolbar: { show: false }
+  },
+  plotOptions: {
+    candlestick: {
+      colors: {
+        upward: '#26A69A',  // 涨 - 绿
+        downward: '#EF5350' // 跌 - 红
+      }
+    }
+  },
+  theme: 'dark' // 跟随项目 dark mode
+}
+```
+
+### 6.5.8 动画
+
+使用 **tw-animate-css**（项目已集成）：
+```vue
+<div class="animate-in fade-in slide-in-from-bottom-4 duration-300">
+  <!-- 内容 -->
+</div>
+```
+
+**项目预定义动画**：
+- `animate-accordion-down` / `animate-accordion-up`
+- `duration-200` / `duration-300`
+
+### 6.5.9 无障碍
+
+**项目已配置**：
+- ✅ `outline-ring/50` - 焦点环
+- ✅ `scroll-smooth` - 平滑滚动
+- ✅ `color-scheme: light dark` - 色彩方案
+
+**额外注意**：
+- 表格使用 `caption` 说明
+- 图标按钮需 `aria-label`
+- 颜色不是唯一信息载体（涨跌需 + 符号）
+- 拖拽平移
+- 滚轮缩放
+- 时间范围切换
+
+**无障碍**:
+- 提供 OHLC 数据表格替代
+- 色盲友好：阳线填充 / 阴线空心
+- 高对比度模式支持
+
+### 6.5.10 数据表格规范
+
+**布局**:
+- 移动端: 卡片式布局
+- 平板+: 横向滚动表格
+- 桌面: 完整表格
+
+**列定义**:
+| 列 | 对齐 | 宽度 | 说明 |
+|----|------|------|------|
+| 代码/名称 | 左 | auto | 主键，可点击 |
+| 开盘价 | 右 | 100px | 数值等宽 |
+| 最高价 | 右 | 100px | 数值等宽 |
+| 最低价 | 右 | 100px | 数值等宽 |
+| 收盘价 | 右 | 100px | 数值等宽 |
+| 涨跌幅 | 右 | 100px | 颜色编码 |
+| 成交量 | 右 | 120px | 数值格式化 |
+| 操作 | 右 | 80px | 图标按钮 |
+
+**排序指示器**:
+- 升序: ↑ 箭头
+- 降序: ↓ 箭头
+- 高亮当前排序列
+
+**行高**:
+- 紧凑: 40px (桌面)
+- 舒适: 56px (移动)
+
+### 6.5.11 深色模式细节
+
+**背景层次**:
+```css
+--bg-canvas: #0F172A;    /* 画布背景 */
+--bg-surface: #1E293B;   /* 卡片/模态框 */
+--bg-overlay: #272F42;   /* 悬停层 */
+```
+
+**文字层次**:
+```css
+--text-primary: #F8FAFC;   /* 主要文字 */
+--text-secondary: #94A3B8; /* 次要文字 */
+--text-tertiary: #64748B;  /* 辅助文字 */
+```
+
+**玻璃态效果**:
+```css
+.glass {
+  background: rgba(30, 41, 59, 0.8);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+```
+
+### 6.5.12 无障碍检查清单
+
+- [ ] 所有交互元素可键盘访问
+- [ ] 焦点环可见（`--color-ring`）
+- [ ] 对比度 ≥ 4.5:1
+- [ ] 图标有 `aria-label`
+- [ ] 表单输入有关联 `<label>`
+- [ ] 错误消息靠近错误源
+- [ ] 尊重 `prefers-reduced-motion`
+- [ ] 表格有 `caption` 或 aria 描述
+- [ ] 颜色不是唯一的信息载体
+- [ ] 加载状态有反馈
+
 ## 7. 错误处理
 
 ### 7.1 数据获取失败
