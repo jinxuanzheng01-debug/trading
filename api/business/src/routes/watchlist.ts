@@ -5,6 +5,7 @@ import { db } from '../db'
 import { watchlistGroups, watchlistItems } from '../db/schema'
 import { authMiddleware } from '../middleware/auth'
 import { eq, and } from 'drizzle-orm'
+import { getQuotes } from '../lib/market-data-client'
 import '../types/hono'
 
 const watchlist = new Hono()
@@ -139,9 +140,26 @@ watchlist.post('/groups/:id/items', zValidator('json', addItemSchema), async (c)
     return c.json({ error: 'Group not found' }, 404)
   }
 
+  // 尝试从 market-data 获取股票信息
+  let enrichedData = { ...data }
+  try {
+    const quotes = await getQuotes([data.symbol])
+    if (quotes.length > 0) {
+      const quote = quotes[0]
+      enrichedData = {
+        ...data,
+        name: data.name || quote.name,
+        exchange: data.exchange || quote.exchange,
+        type: data.type || quote.type,
+      }
+    }
+  } catch (error) {
+    console.error('Failed to fetch stock info:', error)
+  }
+
   const [item] = await db.insert(watchlistItems).values({
     groupId: id,
-    ...data,
+    ...enrichedData,
   }).returning()
 
   return c.json(item, 201)

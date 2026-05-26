@@ -16,6 +16,8 @@ export interface WatchlistItem {
   type: 'stock' | 'etf' | 'index' | 'crypto'
   exchange?: string
   notes?: string
+  market?: string
+  sortOrder?: number
   createdAt: string
   updatedAt: string
 }
