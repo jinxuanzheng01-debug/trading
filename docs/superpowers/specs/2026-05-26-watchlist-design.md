@@ -1,7 +1,7 @@
 # 自选股功能设计文档
 
 **日期**: 2026-05-26
-**版本**: MVP v1.0
+**版本**: MVP v1.2 (极简版)
 **状态**: 设计已完成，待实施
 
 ## 1. 概述
@@ -12,19 +12,20 @@ Trading Agent 是一个面向散户投资者的 AI 辅助量化分析平台。�
 
 ### 1.2 目标
 
-构建一个支持多市场（A股/港股/美股）的自选股系统，提供实时行情展示、智能监控和排序筛选功能。采用分层混合架构，为后续 AI 分析功能预留扩展空间。
+构建一个支持多市场（A股/港股/美股）的自选股系统，提供 T+1 行情展示、排序筛选功能。采用直接调用 market-data 服务的简化架构。
 
 ### 1.3 MVP 范围
 
 **包含功能：**
-- 实时报价/涨跌幅/成交量显示（2-5秒刷新）
-- 迷你分时图 sparkline
+- T+1 行情展示（昨收盘价、涨跌幅、成交量）
 - 排序和筛选（价格/涨跌幅/成交量）
-- 规则式异动检测（价格/成交量异常）
-- 多市场支持，统一数据刷新策略
+- 多市场支持，统一数据策略
 
 **暂不包含（Phase 2）：**
-- AI 分析（异动原因分析、风险评估）
+- 实时行情和自动刷新
+- 迷你分时图 sparkline
+- 异动检测（价格/成交量异常）
+- AI 分析
 - 公告摘要
 - WebSocket 实时推送
 
@@ -35,90 +36,85 @@ Trading Agent 是一个面向散户投资者的 AI 辅助量化分析平台。�
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                         前端层                              │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
-│  │ 自选股列表页  │  │  标的详情页   │  │ 异动提示组件  │      │
-│  │  (轮询刷新)   │  │  (按需加载)   │  │  (低频轮询)   │      │
-│  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘      │
-└─────────┼──────────────────┼──────────────────┼─────────────┘
-          │                  │                  │
-┌─────────┼──────────────────┼──────────────────┼─────────────┐
-│         ▼                  ▼                  ▼              │
+│  ┌──────────────┐  ┌──────────────┐                         │
+│  │ 自选股列表页  │  │  标的详情页   │                         │
+│  │  (调用 API)   │  │  (调用 API)   │                         │
+│  └──────┬───────┘  └──────┬───────┘                         │
+└─────────┼──────────────────┼─────────────────────────────────┘
+          │                  │
+┌─────────┼──────────────────┼─────────────────────────────────┐
+│         ▼                  ▼                                  │
 │  ┌─────────────────────────────────────────────────────┐    │
 │  │                    后端 API 层                        │    │
 │  │  api/business (Hono + PostgreSQL)                    │    │
 │  │                                                       │    │
-│  │  GET /api/watchlist/groups/:id/quotes  (聚合)        │    │
-│  │  GET /api/watchlist/alerts             (查询)        │    │
-│  │  PUT  /api/watchlist/groups/:id/reorder (排序)       │    │
-│  └───────────────────────┬─────────────────────────────┘    │
+│  │  GET /api/watchlist/groups/:id/quotes                │    │
+│  │    → 调用 market-data/quotes (批量)                   │    │
+│  │    → 聚合返回数据                                     │    │
+│  │                                                       │    │
+│  │  GET /api/watchlist/groups/:id/items                 │    │
+│  │    → 查询 watchlist_items 表                          │    │
+│  │    → 调用 market-data/quotes 填充行情数据              │    │
+│  └─────────────────────────────────────────────────────┘    │
 │                           │                                  │
-│         ┌─────────────────┴─────────────────┐              │
-│         ▼                                   ▼              │
-│  ┌──────────────┐                   ┌──────────────┐      │
-│  │ 数据服务层    │                   │ 后台任务层    │      │
-│  │ market-data  │                   │ 定时扫描      │      │
-│  │ (FastAPI)    │                   │ 异动检测      │      │
-│  │              │                   │ 存入数据库    │      │
-│  └──────────────┘                   └──────────────┘      │
+│                           ▼                                  │
+│  ┌─────────────────────────────────────────────────────┐    │
+│  │                    数据服务层                          │    │
+│  │  market-data (FastAPI + Redis 缓存)                   │    │
+│  │                                                       │    │
+│  │  GET /api/quotes?symbols=AAPL,TSLA,...               │    │
+│  │  GET /api/quote?symbol=AAPL                          │    │
+│  └─────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 ### 2.2 数据流
 
-**列表数据流：**
+**查询自选股列表行情：**
 ```
 前端 → GET /api/watchlist/groups/:id/quotes
-     → 后端调用 market-data/quotes (批量)
+     → 后端查询 watchlist_items 表获取标的列表
+     → 调用 market-data/quotes?symbols=AAPL,TSLA,...
      → 聚合数据返回前端
-     → 每 2-5 秒自动刷新
 ```
 
-**异动数据流：**
+**添加新标的：**
 ```
-后台任务 (每 1-2 分钟)
-     → 扫描活跃分组
-     → 规则检测 (价格/成交量)
-     → 存入 watchlist_alerts 表
-     ← 前端查询 /api/watchlist/alerts
-     ← 每 10-30 秒轮询
+前端 → POST /api/watchlist/groups/:id/items
+     → 后端保存到 watchlist_items 表
+     → 调用 market-data/quote 验证标的并获取基础信息
+     → 返回结果
 ```
+
+**数据缓存：**
+- market-data 服务内部已有 Redis 缓存
+- T+1 数据 TTL 可延长到 1-2 小时
+- 无需额外的缓存层
 
 ## 3. 数据库设计
 
-### 3.1 新增表：watchlist_alerts
+### 3.1 修改现有表：watchlist_items
 
 ```sql
-CREATE TABLE watchlist_alerts (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  group_id UUID NOT NULL REFERENCES watchlist_groups(id) ON DELETE CASCADE,
-  symbol VARCHAR(50) NOT NULL,
-  alert_type VARCHAR(20) NOT NULL,  -- 'price_movement', 'volume_spike'
-  severity VARCHAR(10) NOT NULL,     -- 'info', 'warning', 'critical'
-  title VARCHAR(200) NOT NULL,
-  content TEXT,                      -- 预留 AI 分析内容
-  metadata JSONB,                    -- 原始数据
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  expires_at TIMESTAMPTZ
-);
-
-CREATE INDEX idx_alerts_group_symbol ON watchlist_alerts(group_id, symbol);
-CREATE INDEX idx_alerts_created_at ON watchlist_alerts(created_at DESC);
-```
-
-### 3.2 修改现有表：watchlist_items
-
-```sql
+-- 添加排序字段
 ALTER TABLE watchlist_items ADD COLUMN IF NOT EXISTS sort_order INTEGER DEFAULT 0;
+
+-- 添加市场字段（如果还没有）
+ALTER TABLE watchlist_items ADD COLUMN IF NOT EXISTS market VARCHAR(20);
+-- 市场值: 'CN' (A股), 'US' (美股), 'HK' (港股)
 ```
 
-### 3.3 数据保留策略
+**现有字段复用：**
+- `symbol` - 股票代码
+- `name` - 股票名称
+- `type` - 类型 (stock/etf/index/crypto)
+- `exchange` - 交易所
 
-- 异动检测数据：保留 24 小时
-- 定时清理任务：每天凌晨 2 点执行
+**无需新增缓存表** - 直接调用 market-data 服务获取行情数据。
 
 ## 4. API 接口设计
 
-### 4.1 自选股行情聚合接口
+### 4.1 自选股行情接口（新增）
 
 ```
 GET /api/watchlist/groups/:groupId/quotes
@@ -134,16 +130,20 @@ GET /api/watchlist/groups/:groupId/quotes
   },
   "quotes": [
     {
+      "itemId": "uuid",
       "symbol": "AAPL",
       "name": "Apple Inc.",
       "type": "stock",
       "exchange": "NASDAQ",
+      "market": "US",
       "price": 178.52,
       "change": 2.35,
       "changePercent": 1.33,
       "volume": 52340000,
       "marketCap": 2780000000000,
-      "lastUpdate": "2026-05-26T10:30:00Z"
+      "prevClose": 176.17,
+      "dataDate": "2026-05-23",
+      "sortOrder": 0
     }
   ],
   "summary": {
@@ -151,40 +151,11 @@ GET /api/watchlist/groups/:groupId/quotes
     "up": 7,
     "down": 4,
     "flat": 1
-  },
-  "lastUpdate": "2026-05-26T10:30:00Z"
+  }
 }
 ```
 
-### 4.2 异动接口
-
-```
-GET /api/watchlist/alerts?groupId=xxx
-```
-
-**响应：**
-```json
-{
-  "alerts": [
-    {
-      "id": "uuid",
-      "type": "price_movement",
-      "severity": "warning",
-      "title": "AAPL 5 分钟内下跌 3.12%",
-      "symbol": "AAPL",
-      "metadata": {
-        "fromPrice": 182.50,
-        "toPrice": 176.80,
-        "changePercent": -3.12,
-        "timeWindow": "5m"
-      },
-      "createdAt": "2026-05-26T10:28:00Z"
-    }
-  ]
-}
-```
-
-### 4.3 排序接口
+### 4.2 排序接口（新增）
 
 ```
 PUT /api/watchlist/groups/:groupId/reorder
@@ -195,21 +166,14 @@ Content-Type: application/json
 }
 ```
 
-### 4.4 market-data 新增接口
+### 4.3 现有接口调整
 
+**获取分组下的标的（增强）：**
 ```
-GET /api/quotes/mini-chart?symbols=AAPL,TSLA&period=1d
+GET /api/watchlist/groups/:id/items
 ```
 
-**响应：**
-```json
-{
-  "miniCharts": {
-    "AAPL": [[1716739200000, 178.1], [1716739260000, 178.3], ...],
-    "TSLA": [[1716739200000, 175.2], [1716739260000, 175.5], ...]
-  }
-}
-```
+增强：返回时附带最新的行情数据（调用 market-data）。
 
 ## 5. 前端组件设计
 
@@ -218,13 +182,13 @@ GET /api/quotes/mini-chart?symbols=AAPL,TSLA&period=1d
 ```
 pages/watchlist/index.vue
 ├── WatchlistSidebar      (分组列表)
-├── WatchlistToolbar      (工具栏：排序/筛选/刷新)
+├── WatchlistToolbar      (工具栏：排序/筛选)
 ├── WatchlistTable        (数据表格)
 │   ├── SymbolColumn      (代码+名称+类型标签)
-│   ├── PriceColumn       (价格+涨跌幅+迷你图)
+│   ├── PriceColumn       (价格+涨跌幅)
 │   ├── VolumeColumn      (成交量)
 │   └── ActionsColumn     (操作)
-└── WatchlistAlertsPanel  (异动提示抽屉)
+└── StockDetailDialog     (标的详情弹窗)
 ```
 
 ### 5.2 新增功能
@@ -232,9 +196,7 @@ pages/watchlist/index.vue
 | 功能 | 说明 |
 |------|------|
 | 点击列标题排序 | 价格/涨跌幅/成交量，支持升序/降序 |
-| 自动刷新 | 2-5 秒轮询，可暂停 |
-| 价格闪烁 | 红色/绿色闪烁指示变动方向 |
-| 迷你分时图 | SVG sparkline 显示日内走势 |
+| 拖拽排序 | 手动拖拽调整顺序 |
 | 筛选器 | 按类型/涨跌幅/市场筛选 |
 
 ### 5.3 排序选项
@@ -250,113 +212,112 @@ pages/watchlist/index.vue
 - 按涨跌幅：涨幅>5% / 跌幅>5% / 平盘
 - 按市场：A股 / 港股 / 美股
 
-## 6. 异动检测规则
+### 5.5 数据展示
 
-### 6.1 价格异动
-
-| 类型 | 条件 | 严重级别 |
-|------|------|----------|
-| 短期暴涨 | 5 分钟内涨幅 > 5% | warning |
-| 短期暴跌 | 5 分钟内跌幅 > 5% | warning |
-| 日内异动 | 当前涨跌幅 > ±8% | critical |
-
-### 6.2 成交量异动
-
-| 类型 | 条件 | 严重级别 |
-|------|------|----------|
-| 量比异常 | 当前成交量 / 过去5日平均 > 3 | info |
-
-### 6.3 后台任务调度
-
-| 任务 | 频率 | 说明 |
+| 字段 | 说明 | 示例 |
 |------|------|------|
-| 高频扫描 | 每 1-2 分钟 | 扫描活跃分组（最近有查看） |
-| 低频扫描 | 每 15 分钟 | 扫描所有分组 |
+| 价格 | 最新收盘价 | 178.52 |
+| 涨跌额 | 较前一交易日 | +2.35 |
+| 涨跌幅 | 较前一交易日百分比 | +1.33% |
+| 成交量 | 成交量 | 52,340,000 |
+| 数据日期 | 显示是哪天的数据 | 05-23 |
 
-## 7. 错误处理
+## 6. 错误处理
 
-### 7.1 数据获取失败
-
-| 场景 | 处理方式 |
-|------|----------|
-| market-data 不可用 | 显示 "数据暂时无法获取"，保留缓存 |
-| 单个标的失败 | 显示 "--" 或 "N/A" |
-| 网络断开 | 显示离线提示，暂停轮询 |
-
-### 7.2 空状态处理
+### 6.1 数据获取失败
 
 | 场景 | 处理方式 |
 |------|----------|
-| 空分组 | 显示引导 UI："点击 + 添加股票" |
-| 无数据 | 显示 loading 骨架屏 |
+| market-data 不可用 | 显示 "数据暂时无法获取"，显示标的代码和名称 |
+| 单个标的失败 | 显示行情数据为 "--"，其他标的正常显示 |
+| 网络超时 | 显示 "加载超时，请重试" |
 
-### 7.3 数据过期提示
+### 6.2 空状态处理
 
 | 场景 | 处理方式 |
 |------|----------|
-| 数据超时 30 秒 | 时间戳显示橙色 |
-| 正常更新 | 时间戳显示灰色 |
+| 空分组 | 显示引导 UI："点击 + 添加股票到自选" |
+| 无数据 | 显示空状态插图 |
 
-## 8. 性能优化
+## 7. 性能考虑
 
-### 8.1 前端优化
+### 7.1 前端优化
 
 - **虚拟滚动**: 自选股 > 50 只时启用
-- **图表缓存**: 迷你分时图数据缓存 30 秒
-- **轮询暂停**: 页面隐藏时暂停轮询
+- **分页加载**: 默认显示 50 条
 
-### 8.2 后端优化
+### 7.2 后端优化
 
-- **Redis 缓存**: 聚合数据缓存 5 秒，异动数据缓存 30 秒
-- **请求合并**: market-data 批量接口一次性获取所有标的
+- **market-data 批量接口**: 一次请求获取多个标的
+- **Redis 缓存**: market-data 内部已有缓存（TTL 延长到 1-2 小时）
 
-### 8.3 并发处理
+### 7.3 数据加载
 
-- **前端**: 轮询防抖，新请求取消旧请求
-- **后端**: 同一分组的并发请求合并为一次 market-data 调用
+- **首次加载**: 显示 loading 骨架屏
+- **后续加载**: 使用缓存数据，响应快速
 
-## 9. 实施计划
+## 8. 实施计划
 
-### 9.1 后端任务
+### 8.1 后端任务
 
-1. 数据库迁移（新增表、修改表）
-2. market-data 新增批量迷你图接口
-3. api/business 新增聚合接口
-4. 后台异动检测任务
-5. 单元测试
+1. **数据库迁移**
+   - 添加 `sort_order` 字段到 `watchlist_items`
+   - 添加 `market` 字段到 `watchlist_items`
 
-### 9.2 前端任务
+2. **新增 API 接口** (`api/business`)
+   - `GET /api/watchlist/groups/:id/quotes`
+   - `PUT /api/watchlist/groups/:id/reorder`
 
-1. 扩展 watchlist 页面组件
-2. 实现排序/筛选功能
-3. 迷你分时图组件
-4. 异动提示面板
-5. 自动刷新逻辑
+3. **增强现有接口**
+   - `GET /api/watchlist/groups/:id/items` 附带行情数据
 
-### 9.3 集成测试
+4. **market-data 服务调整**
+   - 延长 Redis TTL 到 1-2 小时（T+1 数据）
 
-1. 端到端测试
-2. 性能测试
-3. 多市场数据验证
+### 8.2 前端任务
 
-## 10. 后续扩展 (Phase 2)
+1. **扩展 watchlist 页面**
+   - 调用新的 `/quotes` 接口
+   - 显示行情数据
 
-- AI 分析：异动原因分析、风险评估
-- 公告摘要：智能摘要重要公告
-- WebSocket 实时推送：替代轮询
-- 更多技术指标：MACD、KDJ 等
-- 多股同列对比视图
+2. **实现排序功能**
+   - 点击列标题排序
+   - 拖拽排序
 
-## 11. 附录
+3. **实现筛选功能**
+   - 类型/涨跌幅/市场筛选
 
-### 11.1 参考文档
+4. **样式优化**
+   - 涨跌幅颜色（红涨绿跌 / 绿涨红跌可配置）
+
+### 8.3 测试任务
+
+1. 多市场数据验证（A股/港股/美股）
+2. 排序和筛选功能测试
+3. 边界情况测试（空分组、服务不可用）
+
+## 9. 后续扩展 (Phase 2)
+
+- **实时行情**: WebSocket 推送或短轮询
+- **迷你分时图**: sparkline 显示日内走势
+- **异动检测**: 价格/成交量异常检测和通知
+- **AI 分析**: 异动原因分析、风险评估
+- **公告摘要**: 智能摘要重要公告
+- **更多技术指标**: MACD、KDJ、RSI 等
+- **多股同列**: 对比视图
+
+## 10. 附录
+
+### 10.1 参考文档
 
 - 长桥自选股功能: https://longbridge.com
 - 富途/Moomoo 自选股: https://www.moomoo.com
 - core-infra 规格: `/Users/xuan/Documents/xuan/core-infra`
 
-### 11.2 变更历史
+### 10.2 变更历史
 
 | 日期 | 版本 | 变更内容 |
 |------|------|----------|
-| 2026-05-26 | v1.0 | 初始设计，MVP 版本 |
+| 2026-05-26 | v1.0 | 初始设计，包含实时行情和异动检测 |
+| 2026-05-26 | v1.1 | 简化为 T+1 数据，增加缓存表和定时任务 |
+| 2026-05-26 | v1.2 | 极简版：去除缓存表，直接调用 market-data |
