@@ -69,19 +69,21 @@ export function useStockQuotes() {
   /**
    * Refresh quotes for a group
    */
-  async function refreshGroup(groupId: number) {
-    // TODO: Implement refresh group functionality
-    // For now, this is a placeholder that returns mock success
+  async function refreshGroup(groupId: number, interval: string = '1d') {
     loading.value = true
     error.value = null
 
     try {
-      // This would call the business API to get group items
-      // For now, we'll rely on the caller to pass the items
-      await getGroupQuotes([])
+      await fetchWithAuth<{ success: boolean; updated: number; failed: number }>(
+        `${config.public.apiBase}/api/watchlist-quotes/groups/${groupId}/refresh?interval=${interval}`,
+        {
+          method: 'POST',
+        }
+      )
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to refresh group'
       console.error('Failed to refresh group:', e)
+      throw e
     } finally {
       loading.value = false
     }
