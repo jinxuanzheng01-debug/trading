@@ -72,3 +72,6 @@ export type WatchlistItem = typeof watchlistItems.$inferSelect
 export type NewWatchlistItem = typeof watchlistItems.$inferInsert
 export type AnalysisRun = typeof analysisRuns.$inferSelect
 export type BacktestRun = typeof backtestRuns.$inferSelect
+
+// Re-export types from schema-stock for convenience
+export type { StockQuote, NewStockQuote, StockQuoteHistory, NewStockQuoteHistory } from './schema-stock'

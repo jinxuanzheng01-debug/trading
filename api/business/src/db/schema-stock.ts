@@ -42,7 +42,7 @@ export const stockQuoteHistory = pgTable('stock_quote_history', {
   timestamp: timestamp('timestamp', { withTimezone: true }).notNull(),
   created_at: timestamp('created_at').defaultNow(),
 }, (table) => ({
-  symbolIntervalTimeUnique: unique('symbol_interval_time_unique').on(table.symbol, table.interval, table.timestamp),
+  symbolIntervalTimestampUnique: unique('symbol_interval_timestamp_unique').on(table.symbol, table.interval, table.timestamp),
   symbolIdx: index('stock_quote_history_symbol_idx').on(table.symbol),
   intervalIdx: index('stock_quote_history_interval_idx').on(table.interval),
   timestampIdx: index('stock_quote_history_timestamp_idx').on(table.timestamp),
