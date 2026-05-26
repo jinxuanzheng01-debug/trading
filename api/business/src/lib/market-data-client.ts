@@ -27,11 +27,16 @@ interface KlineData {
 const MARKET_DATA_BASE = process.env.MARKET_DATA_API_BASE || 'http://localhost:8000'
 
 export async function getQuotes(symbols: string[]): Promise<MarketDataQuote[]> {
-  const response = await fetch(`${MARKET_DATA_BASE}/api/quotes?symbols=${symbols.join(',')}`)
-  if (!response.ok) {
-    throw new Error(`Market-data service error: ${response.statusText}`)
+  if (!symbols || symbols.length === 0) {
+    return []
   }
-  const data = await response.json()
+
+  const url = `${MARKET_DATA_BASE}/api/quotes?symbols=${symbols.join(',')}`
+  const response = await fetch(url)
+  if (!response.ok) {
+    throw new Error(`Market-data service error: ${response.statusText} (${url})`)
+  }
+  const data = await response.json() as { quotes?: MarketDataQuote[] }
   return data.quotes || []
 }
 
@@ -46,10 +51,11 @@ export async function getKlines(
     ...(limit && { limit: limit.toString() })
   })
 
-  const response = await fetch(`${MARKET_DATA_BASE}/api/kline?${params}`)
+  const url = `${MARKET_DATA_BASE}/api/kline?${params}`
+  const response = await fetch(url)
   if (!response.ok) {
-    throw new Error(`Market-data service error: ${response.statusText}`)
+    throw new Error(`Market-data service error: ${response.statusText} (${url})`)
   }
-  const data = await response.json()
+  const data = await response.json() as { data?: KlineData[] }
   return data.data || []
 }
