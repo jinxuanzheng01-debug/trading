@@ -58,7 +58,7 @@ class YFinanceClient(BaseStockDataProvider):
         # 映射 interval 到 yfinance 格式
         interval_map = {
             "1m": "1m", "5m": "5m", "15m": "15m", "30m": "30m",
-            "1h": "1h", "4h": "4h", "1d": "1d", "1w": "1wk"
+            "1h": "1h", "4h": "4h", "1d": "1d", "1w": "1wk", "1M": "1mo"
         }
         yf_interval = interval_map.get(interval, "1d")
 

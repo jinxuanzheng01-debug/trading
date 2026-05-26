@@ -32,5 +32,19 @@ class BackendAPIClient:
             logger.error(f"Failed to fetch watchlist symbols: {e}")
             return []
 
+    async def update_quotes_cache(self, quotes: List[dict]) -> dict:
+        """批量更新报价缓存"""
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                response = await client.post(
+                    f"{self.base_url}/api/internal/quotes/batch-update",
+                    json=quotes,
+                )
+                response.raise_for_status()
+                return response.json()
+        except httpx.HTTPError as e:
+            logger.error(f"Failed to update quotes cache: {e}")
+            return {"success": False, "error": str(e)}
+
 
 backend_api = BackendAPIClient()

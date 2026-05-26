@@ -81,9 +81,16 @@ async def get_quotes(symbols: str = Query(..., description="逗号分隔的股�
 @router.get("/kline", response_model=KlineResponse)
 async def get_kline(
     symbol: str = Query(..., description="股票代码"),
-    interval: str = Query("1d", description="时间周期"),
+    interval: str = Query("1d", description="时间周期: 1d(日线), 1w(周线), 1M(月线)"),
     limit: int = Query(100, description="返回数量", le=500)
 ):
+    # 验证interval参数
+    valid_intervals = ["1d", "1w", "1M"]
+    if interval not in valid_intervals:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid interval '{interval}'. Must be one of: {', '.join(valid_intervals)}"
+        )
     # 先查缓存
     cached = await cache.get_kline(symbol, interval)
     if cached:

@@ -48,5 +48,20 @@ class DataAPIClient:
             logger.error(f"Failed to sync kline data for {symbol}: {e}")
             return {"success": False, "error": str(e)}
 
+    async def get_quotes(self, symbols: List[str]) -> List[Dict[str, Any]]:
+        """批量获取股票报价"""
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.get(
+                    f"{self.base_url}/api/quotes",
+                    params={"symbols": ",".join(symbols)},
+                )
+                response.raise_for_status()
+                result = response.json()
+                return result.get("data", [])
+        except httpx.HTTPError as e:
+            logger.error(f"Failed to fetch quotes for {symbols}: {e}")
+            return []
+
 
 data_api = DataAPIClient()

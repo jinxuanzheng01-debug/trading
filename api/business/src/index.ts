@@ -6,6 +6,7 @@ import { auth as authRoutes } from './routes/auth'
 import { watchlist as watchlistRoutes } from './routes/watchlist'
 import { watchlistQuotes as watchlistQuotesRoutes } from './routes/watchlist-quotes'
 import { analysis as analysisRoutes } from './routes/analysis'
+import { internalQuotes as internalQuotesRoutes } from './routes/internal-quotes'
 
 const app = new Hono()
 
@@ -24,6 +25,7 @@ app.route('/api/auth', authRoutes)
 app.route('/api/watchlist', watchlistRoutes)
 app.route('/api/watchlist-quotes', watchlistQuotesRoutes)
 app.route('/api/analysis', analysisRoutes)
+app.route('/api/internal', internalQuotesRoutes)
 
 export { app }
 export default app

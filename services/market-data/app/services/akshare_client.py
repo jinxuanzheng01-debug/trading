@@ -69,16 +69,28 @@ class AkShareClient(BaseStockDataProvider):
     ) -> List[KlineData]:
         # AkShare 历史K线
         end = end_date or datetime.now()
-        start = start_date or (end - timedelta(days=365))
+
+        # 根据interval计算开始时间
+        interval_days_map = {
+            "1d": 365,
+            "1w": 365 * 2,
+            "1M": 365 * 5
+        }
+        days = interval_days_map.get(interval, 365)
+        start = start_date or (end - timedelta(days=days))
 
         start_str = start.strftime("%Y%m%d")
         end_str = end.strftime("%Y%m%d")
+
+        # 映射interval到AkShare period参数
+        period_map = {"1d": "daily", "1w": "weekly", "1M": "monthly"}
+        ak_period = period_map.get(interval, "daily")
 
         if self._is_a_stock(symbol):
             df = await asyncio.to_thread(
                 lambda: ak.stock_zh_a_hist(
                     symbol=symbol,
-                    period="daily",
+                    period=ak_period,
                     start_date=start_str,
                     end_date=end_str,
                     adjust=""
@@ -88,7 +100,7 @@ class AkShareClient(BaseStockDataProvider):
             df = await asyncio.to_thread(
                 lambda: ak.stock_hk_hist(
                     symbol=symbol,
-                    period="daily",
+                    period=ak_period,
                     start_date=start_str,
                     end_date=end_str,
                     adjust="qfq"
