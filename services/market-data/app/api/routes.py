@@ -2,7 +2,10 @@ from fastapi import APIRouter, HTTPException, Query
 from datetime import datetime
 from typing import List
 from sqlalchemy.ext.asyncio import AsyncSession
-from .models import QuoteData, QuotesResponse, KlineResponse, IndicatorsResponse, HealthResponse
+from .models import (
+    QuoteData, QuotesResponse, KlineResponse, IndicatorsResponse, HealthResponse,
+    StockInfo, StockMetrics, StockDetailResponse
+)
 from ..services.yfinance_client import YFinanceClient
 from ..services.akshare_client import AkShareClient
 from ..services.cache import cache
@@ -79,6 +82,64 @@ async def get_quotes(symbols: str = Query(..., description="逗号分隔的股�
     await cache.set_quotes(symbol_list, response.model_dump())
 
     return response
+
+
+@router.get("/stock/{symbol}", response_model=StockDetailResponse)
+async def get_stock_detail(symbol: str):
+    """获取股票详细信息，包括公司信息和关键指标"""
+    import asyncio
+    from ..services.yfinance_client import safe_float
+
+    client = get_client(symbol)
+
+    # 获取报价数据
+    quote = await client.get_quote(symbol)
+
+    # 从 yfinance 获取扩展信息（仅支持美股）
+    if hasattr(client, '_get_ticker'):
+        ticker = await asyncio.to_thread(client._get_ticker, symbol)
+        info = await asyncio.to_thread(lambda: ticker.info)
+
+        # 构建股票信息
+        stock_info = StockInfo(
+            symbol=symbol,
+            name=info.get("longName") or info.get("shortName") or symbol,
+            sector=info.get("sector"),
+            industry=info.get("industry"),
+            website=info.get("website"),
+            country=info.get("country"),
+            currency=info.get("currency", "USD")
+        )
+
+        # 构建指标
+        metrics = StockMetrics(
+            marketCap=safe_float(info.get("marketCap")),
+            trailingPE=safe_float(info.get("trailingPE")),
+            forwardPE=safe_float(info.get("forwardPE")),
+            priceToBook=safe_float(info.get("priceToBook")),
+            beta=safe_float(info.get("beta")),
+            fiftyTwoWeekHigh=safe_float(info.get("fiftyTwoWeekHigh")),
+            fiftyTwoWeekLow=safe_float(info.get("fiftyTwoWeekLow")),
+            dividendRate=safe_float(info.get("dividendRate")),
+            dividendYield=safe_float(info.get("dividendYield"))
+        )
+
+        return StockDetailResponse(
+            info=stock_info,
+            quote=quote,
+            metrics=metrics
+        )
+
+    # 无扩展信息时的后备方案（A股/港股）
+    return StockDetailResponse(
+        info=StockInfo(
+            symbol=symbol,
+            name=quote.name,
+            currency=quote.currency or "USD"
+        ),
+        quote=quote,
+        metrics=StockMetrics()
+    )
 
 
 @router.get("/kline", response_model=KlineResponse)

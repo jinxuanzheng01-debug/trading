@@ -21,6 +21,34 @@ class QuoteData(BaseModel):
     timestamp: str
 
 
+class StockInfo(BaseModel):
+    symbol: str
+    name: Optional[str] = None
+    sector: Optional[str] = None
+    industry: Optional[str] = None
+    website: Optional[str] = None
+    country: Optional[str] = None
+    currency: str = "USD"
+
+
+class StockMetrics(BaseModel):
+    marketCap: Optional[float] = None
+    trailingPE: Optional[float] = None
+    forwardPE: Optional[float] = None
+    priceToBook: Optional[float] = None
+    beta: Optional[float] = None
+    fiftyTwoWeekHigh: Optional[float] = None
+    fiftyTwoWeekLow: Optional[float] = None
+    dividendRate: Optional[float] = None
+    dividendYield: Optional[float] = None
+
+
+class StockDetailResponse(BaseModel):
+    info: StockInfo
+    quote: QuoteData
+    metrics: StockMetrics
+
+
 class QuotesResponse(BaseModel):
     data: List[QuoteData]
     timestamp: str
