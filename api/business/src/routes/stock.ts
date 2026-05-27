@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { db } from '../db'
 import { stocks } from '../db/schema-stock'
-import { eq } from 'drizzle-orm'
+import { eq, asc } from 'drizzle-orm'
 import { ok, fail } from '../lib/response'
 import { getStockDetail, getKlinesByPeriod } from '../lib/market-data-client'
 import type { StockDetailResponse } from '../types/stock'
@@ -22,9 +22,19 @@ stock.get('/:symbol', async (c) => {
 
   try {
     // 检查股票是否存在于我们的数据库中
-    const stockRecord = await db.query.stocks.findFirst({
-      where: eq(stocks.symbol, symbol),
+    const stockRecords = await db.select({
+      id: stocks.id,
+      symbol: stocks.symbol,
+      name: stocks.name,
+      nameCn: stocks.name_cn,
+      exchange: stocks.exchange,
+      market: stocks.market,
     })
+    .from(stocks)
+    .where(eq(stocks.symbol, symbol))
+    .limit(1)
+
+    const stockRecord = stockRecords[0]
 
     if (!stockRecord) {
       return fail(c, 40002, '未找到该股票代码')
@@ -37,11 +47,11 @@ stock.get('/:symbol', async (c) => {
     const response: StockDetailResponse = {
       info: {
         ...data.info,
-        nameCn: stockRecord.name_cn || undefined,
+        nameCn: stockRecord.nameCn || undefined,
       },
       quote: {
         ...data.quote,
-        name: stockRecord.name_cn || stockRecord.name || data.quote.name,
+        name: stockRecord.nameCn || stockRecord.name || data.quote.name,
       },
       metrics: data.metrics,
     }

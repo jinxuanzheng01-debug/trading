@@ -32,8 +32,12 @@ interface MarketDataQuote {
   change: number
   changePercent: number
   volume: number
+  high: number
+  low: number
+  open: number
   marketCap: number
   prevClose: number
+  currency: string
   dataDate: Date
 }
 
@@ -95,15 +99,19 @@ export async function getQuotes(symbols: string[]): Promise<MarketDataQuote[]> {
   return responseData.data.map((quote): MarketDataQuote => ({
     symbol: quote.symbol,
     name: quote.name || quote.symbol,
-    type: 'stock', // Default type since service doesn't provide it
-    exchange: quote.currency === 'USD' ? 'US' : 'UNKNOWN', // Map currency to exchange
+    type: 'stock',
+    exchange: quote.currency === 'USD' ? 'US' : 'UNKNOWN',
     price: quote.price,
     change: quote.change,
     changePercent: quote.changePercent,
     volume: quote.volume || 0,
+    high: quote.high || 0,
+    low: quote.low || 0,
+    open: quote.open || 0,
     marketCap: quote.marketCap || 0,
     prevClose: quote.previousClose,
-    dataDate: new Date(quote.timestamp), // Convert timestamp to Date
+    currency: quote.currency || 'USD',
+    dataDate: new Date(quote.timestamp),
   }))
 }
 
@@ -152,7 +160,7 @@ export async function getStockDetail(symbol: string): Promise<{
     market: string
     type: string
   }
-  quote: MarketDataQuote
+  quote: Omit<MarketDataQuote, 'dataDate'> & { dataDate: string }
   metrics: {
     marketCap: number
     trailingPE?: number
@@ -209,9 +217,13 @@ export async function getStockDetail(symbol: string): Promise<{
       change: data.quote.change,
       changePercent: data.quote.changePercent,
       volume: data.quote.volume || 0,
+      high: data.quote.high || 0,
+      low: data.quote.low || 0,
+      open: data.quote.open || 0,
       marketCap: data.quote.marketCap || 0,
       prevClose: data.quote.previousClose,
-      dataDate: new Date(data.quote.timestamp),
+      currency: data.quote.currency || currency,
+      dataDate: new Date(data.quote.timestamp).toISOString(),
     },
     metrics: {
       marketCap: data.metrics.marketCap || 0,
