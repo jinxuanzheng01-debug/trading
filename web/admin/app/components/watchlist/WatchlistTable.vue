@@ -46,7 +46,7 @@ function getChangeClass(changePercent?: number) {
         v-for="item in items"
         :key="item.id"
         class="flex items-center justify-between py-3 px-1 hover:bg-muted/30 cursor-pointer transition-colors rounded"
-        @click="emit('view-detail', item)"
+        @click="navigateTo(`/stock/${item.symbol}`)"
       >
         <!-- 股票名 + 代码 -->
         <div class="flex-1 min-w-0">
@@ -86,7 +86,7 @@ function getChangeClass(changePercent?: number) {
 
         <!-- 操作 -->
         <div class="w-20 text-right" @click.stop>
-          <Button variant="ghost" size="icon" class="size-8" title="查看详情" @click="emit('view-detail', item)">
+          <Button variant="ghost" size="icon" class="size-8" title="查看详情" @click.stop="navigateTo(`/stock/${item.symbol}`)">
             <Icon name="i-lucide-chart-bar" class="size-4" />
           </Button>
           <Button variant="ghost" size="icon" class="size-8 text-muted-foreground hover:text-destructive" title="删除" @click="emit('delete-item', item)">
