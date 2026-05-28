@@ -8,15 +8,26 @@ import { watchlistQuotes as watchlistQuotesRoutes } from './routes/watchlist-quo
 import { analysis as analysisRoutes } from './routes/analysis'
 import { internalQuotes as internalQuotesRoutes } from './routes/internal-quotes'
 import stock from './routes/stock'
+import { paper as paperRoutes } from './routes/paper'
 
 const app = new Hono()
 
 // Middleware
 app.use('*', logger())
 app.use('*', cors({
-  origin: ['http://localhost:3000'],
+  origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
   credentials: true,
 }))
+
+// Global error handler
+app.onError((err, c) => {
+  console.error(`[${c.req.method}] ${c.req.url}:`, err)
+  return c.json({
+    code: 50000,
+    msg: process.env.NODE_ENV === 'production' ? '服务器内部错误' : err.message,
+    data: null,
+  }, 500)
+})
 
 // Health check
 app.get('/', (c) => c.json({ status: 'ok', service: 'trading-agent-api' }))
@@ -28,6 +39,7 @@ app.route('/api/watchlist-quotes', watchlistQuotesRoutes)
 app.route('/api/analysis', analysisRoutes)
 app.route('/api/internal', internalQuotesRoutes)
 app.route('/api/stock', stock)
+app.route('/api/paper', paperRoutes)
 
 export { app }
 export default app
