@@ -15,6 +15,11 @@ export const navMenu: NavMenu[] = [
         link: '/watchlist',
       },
       {
+        title: 'Paper Trading',
+        icon: 'i-lucide-wallet',
+        link: '/paper',
+      },
+      {
         title: 'Market',
         icon: 'i-lucide-trending-up',
         link: '/market',

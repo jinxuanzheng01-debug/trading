@@ -5,9 +5,21 @@ definePageMeta({
 
 const auth = useAuth()
 const watchlist = useWatchlist()
+const paper = usePaper()
 
 const groups = ref<WatchlistGroup[]>([])
 const isLoading = ref(true)
+const paperWallets = ref<any[]>([])
+const totalPaperAssets = ref(0)
+const paperWalletsLoading = ref(false)
+
+async function loadPaperSummary() {
+  paperWalletsLoading.value = true
+  try {
+    paperWallets.value = await paper.getWallets()
+  } catch { /* ignore - feature might not be used yet */ }
+  finally { paperWalletsLoading.value = false }
+}
 
 onMounted(async () => {
   try {
@@ -19,6 +31,8 @@ onMounted(async () => {
   finally {
     isLoading.value = false
   }
+
+  loadPaperSummary()
 })
 </script>
 
@@ -38,6 +52,21 @@ onMounted(async () => {
     <main class="flex flex-1 flex-col gap-4">
       <!-- Stats Cards -->
       <div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <NuxtLink to="/paper">
+          <Card class="cursor-pointer hover:shadow-md transition-shadow">
+            <CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle class="text-sm font-medium">Paper Wallets</CardTitle>
+              <Icon name="i-lucide-wallet" class="size-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div class="text-2xl font-bold">{{ paperWallets.length }}</div>
+              <p class="text-xs text-muted-foreground">
+                {{ paperWallets.length > 0 ? `${paperWallets.length} active wallet(s)` : 'No wallets yet' }}
+              </p>
+            </CardContent>
+          </Card>
+        </NuxtLink>
+
         <Card>
           <CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle class="text-sm font-medium">
@@ -111,9 +140,11 @@ onMounted(async () => {
                 <span>Manage Watchlist</span>
               </NuxtLink>
             </Button>
-            <Button variant="outline" class="h-auto flex-col gap-2 py-4" disabled>
-              <Icon name="i-lucide-trending-up" class="size-6" />
-              <span>Market Data</span>
+            <Button variant="outline" class="h-auto flex-col gap-2 py-4 w-full" as-child>
+              <NuxtLink to="/paper">
+                <Icon name="i-lucide-wallet" class="size-6" />
+                <span>Paper Trading</span>
+              </NuxtLink>
             </Button>
             <Button variant="outline" class="h-auto flex-col gap-2 py-4" disabled>
               <Icon name="i-lucide-flask-conical" class="size-6" />
