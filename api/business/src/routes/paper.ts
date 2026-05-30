@@ -19,7 +19,7 @@ app.post('/wallets', async (c) => {
   const currency = marketCurrency[body.market] || 'USD'
 
   const [wallet] = await db.insert(paperWallets).values({
-    userId: user.id,
+    userId: user.userId,
     name: body.name,
     market: body.market,
     currency,
@@ -34,7 +34,7 @@ app.post('/wallets', async (c) => {
 app.get('/wallets', async (c) => {
   const user = c.get('user') as any
   const wallets = await db.select().from(paperWallets)
-    .where(eq(paperWallets.userId, user.id))
+    .where(eq(paperWallets.userId, user.userId))
     .orderBy(desc(paperWallets.createdAt))
 
   const marketDataBase = process.env.MARKET_DATA_API_BASE || 'http://localhost:8000'
@@ -86,7 +86,7 @@ app.get('/wallets/:id', async (c) => {
   const id = Number(c.req.param('id'))
 
   const wallet = await db.select().from(paperWallets)
-    .where(sql`${paperWallets.id} = ${id} AND ${paperWallets.userId} = ${user.id}`)
+    .where(sql`${paperWallets.id} = ${id} AND ${paperWallets.userId} = ${user.userId}`)
     .limit(1)
 
   if (!wallet.length) return fail(c, ErrorCode.NOT_FOUND, 'Wallet not found')
@@ -121,7 +121,7 @@ app.delete('/wallets/:id', async (c) => {
   const id = Number(c.req.param('id'))
 
   await db.delete(paperWallets)
-    .where(sql`${paperWallets.id} = ${id} AND ${paperWallets.userId} = ${user.id}`)
+    .where(sql`${paperWallets.id} = ${id} AND ${paperWallets.userId} = ${user.userId}`)
 
   return ok(c, { id })
 })
@@ -132,7 +132,7 @@ app.post('/wallets/:id/reset', async (c) => {
   const id = Number(c.req.param('id'))
 
   const [wallet] = await db.select().from(paperWallets)
-    .where(sql`${paperWallets.id} = ${id} AND ${paperWallets.userId} = ${user.id}`)
+    .where(sql`${paperWallets.id} = ${id} AND ${paperWallets.userId} = ${user.userId}`)
     .limit(1)
 
   if (!wallet) return fail(c, ErrorCode.NOT_FOUND, 'Wallet not found')
@@ -155,7 +155,7 @@ app.post('/wallets/:id/orders', async (c) => {
   const body = await c.req.json<{ stock_code: string; side: 'buy' | 'sell'; quantity: number }>()
 
   const [wallet] = await db.select().from(paperWallets)
-    .where(sql`${paperWallets.id} = ${walletId} AND ${paperWallets.userId} = ${user.id}`)
+    .where(sql`${paperWallets.id} = ${walletId} AND ${paperWallets.userId} = ${user.userId}`)
     .limit(1)
 
   if (!wallet) return fail(c, ErrorCode.NOT_FOUND, 'Wallet not found')
@@ -267,7 +267,7 @@ app.get('/wallets/:id/orders', async (c) => {
   const limit = Number(c.req.query('limit') || 50)
 
   const orders = await db.select().from(paperOrders)
-    .where(sql`${paperOrders.walletId} = ${walletId} AND ${paperOrders.walletId} IN (SELECT id FROM ${paperWallets} WHERE user_id = ${user.id})`)
+    .where(sql`${paperOrders.walletId} = ${walletId} AND ${paperOrders.walletId} IN (SELECT id FROM ${paperWallets} WHERE user_id = ${user.userId})`)
     .orderBy(desc(paperOrders.createdAt))
     .limit(limit)
 
@@ -317,7 +317,7 @@ app.post('/wallets/:id/positions', async (c) => {
   const body = await c.req.json<{ stock_code: string; quantity: number; avg_cost: number }>()
 
   const [wallet] = await db.select().from(paperWallets)
-    .where(sql`${paperWallets.id} = ${walletId} AND ${paperWallets.userId} = ${user.id}`)
+    .where(sql`${paperWallets.id} = ${walletId} AND ${paperWallets.userId} = ${user.userId}`)
     .limit(1)
 
   if (!wallet) return fail(c, ErrorCode.NOT_FOUND, 'Wallet not found')

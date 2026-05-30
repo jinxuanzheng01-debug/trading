@@ -97,7 +97,7 @@ watchlistQuotes.get('/groups/:groupId/quotes', async (c) => {
            q.market_cap as "marketCap", q.currency
     FROM stocks s
     JOIN stock_quotes q ON s.id = q.stock_id
-    WHERE s.symbol = ANY(${symbols}::text[])
+    WHERE s.symbol = ANY(${sql`ARRAY[${sql.join(symbols.map(s => sql`${s}`), sql`, `)}]`}::text[])
   `) as any
   const quoteArr = Array.isArray(quoteRows) ? quoteRows : (quoteRows as any).rows || []
 
