@@ -99,7 +99,22 @@ watchlistQuotes.get('/groups/:groupId/quotes', async (c) => {
     JOIN stock_quotes q ON s.id = q.stock_id
     WHERE s.symbol = ANY(${sql`ARRAY[${sql.join(symbols.map(s => sql`${s}`), sql`, `)}]`}::text[])
   `) as any
-  const quoteArr = Array.isArray(quoteRows) ? quoteRows : (quoteRows as any).rows || []
+  // PG numeric 类型返回字符串，转为 number
+  const toNum = (v: any) => v == null ? null : Number(v)
+  const castQuote = (q: any) => ({
+    ...q,
+    price: toNum(q.price),
+    change: toNum(q.change),
+    changePercent: toNum(q.changePercent ?? q.change_percent),
+    open: toNum(q.open),
+    high: toNum(q.high),
+    low: toNum(q.low),
+    volume: toNum(q.volume),
+    prevClose: toNum(q.prevClose ?? q.prev_close),
+    marketCap: toNum(q.marketCap ?? q.market_cap),
+  })
+
+  const quoteArr = (Array.isArray(quoteRows) ? quoteRows : (quoteRows as any).rows || []).map(castQuote)
 
   if (quoteArr.length > 0) {
     const itemsWithQuotes = items.map(item => {
