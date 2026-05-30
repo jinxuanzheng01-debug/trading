@@ -56,10 +56,11 @@ Trading Agent 是一个量化分析平台，已完成：
 
 ### 2.2 核心原则
 
-1. **计算与解读分离** — 指标计算和策略评分是纯算法（零幻觉），LLM 只做最后一步的自然语言总结
+1. **数据层算法化，解读层 Skill 化** — 指标/因子/信号的检测完全由算法完成（零幻觉），最终评分和解读由 LLM + Skill 完成
 2. **因子标准化** — 所有因子用标准算子计算，输出可跨标的、跨时间比较的标准化值
 3. **策略可组合** — 每个策略（信号引擎）独立运行，互不依赖，用户未来可选择启用的策略组合
-4. **取代现有 agent 服务中的 LLM 直接分析模式** — 现有 VoltAgent+DeepSeek 的"让 LLM 看指标猜结论"将被 ta-engine 的工程化计算取代
+4. **取代现有 agent 服务中的 LLM 直接分析模式** — 现有 VoltAgent+DeepSeek 的"让 LLM 看指标猜结论"将被 ta-engine 的工程化计算 + Skill 引导的 LLM 解读取代
+5. **Skill 是知识资产** — 分析方法论沉淀在 Skill 模板中，可迭代、可回测验证、可分享
 
 ### 2.3 因子类型决策
 
@@ -232,22 +233,99 @@ Trading Agent 是一个量化分析平台，已完成：
      得分 > 2 → BUY, 得分 < -2 → SELL, 否则 HOLD
 ```
 
-### 3.7 分析报告 (Analysis Report)
+### 3.7 评分机制：LLM + Skill 模式
 
-四维策略评分 + 加权汇总 + LLM 解读。
+#### 为什么不用固定规则评分
 
-**综合评分公式：**
+固定权重（如趋势 35% + 动量 30% + 量价 20% + 形态 15%）存在根本问题：
+- 权重是人为拍脑袋定的，没有理论依据
+- 牛市和熊市用同一套权重不合理
+- 不同股票（AAPL vs TSLA）用同一套权重不合理
+- 虽然确定性强，但死板且无法适应上下文
+
+#### 为什么不用裸 LLM 评分
+
+LLM 自由发挥的评分存在信任问题：
+- 无法单元测试和回归测试
+- 同一股票两次分析结果可能不同
+- 出错时难以定位和修复
+- 评分逻辑不可审计
+
+#### 最终方案：LLM + Skill 模式（参考 Vibe-Trading Skills 架构）
+
+**核心思路：** 把专家的分析方法论固化成 Skill 模板，引导 LLM 按规范解读，而不是让它自由发挥。
 
 ```
-综合评分 = 趋势权重(35%) × 趋势评分
-         + 动量权重(30%) × 动量评分
-         + 量价权重(20%) × 量价评分
-         + 形态权重(15%) × 形态评分
+数据层（确定性）：
+  指标 → 因子 → 信号    ← 全部算法计算，零幻觉，可测试
+
+解读层（Skill 约束的 LLM）：
+  因子值 + 信号列表 + Skill 模板 → LLM → 结构化评分 + 解读
+                                    ↑
+                              Skill 模板约束了：
+                              - 信号优先级和冲突处理
+                              - 上下文调整规则
+                              - 输出格式要求
 ```
 
-默认权重可后续让用户自定义。
+**为什么 Skill 模式比固定规则和裸 LLM 都好：**
 
-**输出结构：**
+| | 固定规则 | 裸 LLM | **LLM + Skill** |
+|---|---|---|---|
+| 数据层 | 算法 ✅ | 算法 ✅ | 算法 ✅ |
+| 评分逻辑 | 硬编码权重 | LLM 自由发挥 | Skill 模板约束 LLM |
+| 可迭代 | 改代码 | 改 prompt，效果不确定 | 改 Skill，方法论可沉淀 |
+| 可信度 | 高但死板 | 低 | Skill 内规则可验证 |
+| 灵活性 | 差 | 高但不可控 | 高且受约束 |
+| 可分享 | 否 | 否 | Skill 可社区分享 |
+
+#### Skill 模板示例
+
+```markdown
+# 趋势跟踪分析 Skill
+
+## 适用场景
+市场处于明确趋势中（ADX > 25，EMA 多头/空头排列）
+
+## 信号优先级
+1. 量价背离 → 最强信号，单独即可触发判断
+2. 动量启动 → 需要量能偏离 > 1.5 确认
+3. 波动收敛 → 只做过滤，不单独触发
+
+## 冲突处理规则
+- 动量看多 + 形态看空 → 降低 confidence，观望为主
+- 多个看涨形态共振(>3) → confidence 额外 +15
+- 量价背离方向与动量方向相反 → 以量价背离为准
+
+## 上下文调整
+- 大盘(标普)周线连跌3周 → 所有看多信号 confidence 打8折
+- 财报前一周 → 形态信号可信度降低，量价信号优先
+- 波动率压缩因子 < 0.3 → 提高趋势延续的概率判断
+
+## 输出要求
+JSON 格式，必须包含：
+- overall_score (-100 ~ +100)
+- signal (BUY / HOLD / SELL)
+- confidence (0 ~ 100)
+- summary (一句话概括)
+- reasons (看多理由列表)
+- risks (风险提示列表)
+- suggestion (操作建议)
+```
+
+#### V1 内置 Skills
+
+| Skill | 适用场景 | 分析风格 |
+|-------|---------|---------|
+| `trend_following` | ADX > 25，有明确趋势 | 趋势优先，顺势而为 |
+| `momentum_reversal` | RSI 极端值，超买超卖 | 抓拐点，逆势交易 |
+| `volume_price` | 量价关系异常 | 量价验证为主，最保守 |
+| `pattern` | K线形态丰富 | 短线参考，辅助确认 |
+| `comprehensive` | 默认综合分析 | 融合所有维度，平衡观点 |
+
+用户可在前端选择使用哪个 Skill，默认使用 `comprehensive`。
+
+#### 输出结构：
 
 ```typescript
 interface TechnicalAnalysisResult {
@@ -336,18 +414,32 @@ interface TechnicalAnalysisResult {
 │                    services/ta-engine (新)                     │
 │                    FastAPI, 端口 8003                           │
 │                                                                │
-│  ┌─────────────┐   ┌──────────────┐   ┌───────────────────┐  │
-│  │  指标计算层   │   │  因子+信号引擎 │   │  LLM 解读层(可选)  │  │
-│  │  TA-Lib     │──►│  多策略独立评分 │──►│  DeepSeek/Claude  │  │
-│  │  150+ 指标  │   │  加权汇总      │   │  自然语言解读      │  │
-│  │  61 K线形态 │   │  信号生成      │   │  风险提示          │  │
-│  └──────┬──────┘   └──────────────┘   └───────────────────┘  │
-│         │                                                     │
-│         ▼                                                     │
-│  ┌──────────────────────────────────────────────────────┐    │
-│  │              K-line 数据                               │    │
-│  │   从 market-data 服务获取或从 TimescaleDB 直接读取      │    │
-│  └──────────────────────────────────────────────────────┘    │
+│  ┌─────────────────┐   ┌──────────────┐                       │
+│  │  指标计算层       │   │  因子+信号引擎 │  ← 数据层：确定性    │
+│  │  TA-Lib          │──►│  多策略独立评分 │     算法计算，零幻觉   │
+│  │  150+ 指标       │   │  信号触发检测  │     可测试，可回测     │
+│  │  61 K线形态      │   └──────┬───────┘                       │
+│  └─────────────────┘          │                                │
+│                               ▼                                │
+│                   ┌───────────────────────┐                    │
+│                   │  Skill 引导的 LLM 解读  │  ← 解读层：Skill   │
+│                   │  DeepSeek / Claude     │     约束 LLM      │
+│                   │  输出评分 + 分析报告    │     方法论可沉淀    │
+│                   └───────────────────────┘                    │
+│                                                                │
+│  ┌──────────────────────────────────────────────────────┐     │
+│  │  Skills/                                              │     │
+│  │  ├── trend_following.md    趋势跟踪分析方法论           │     │
+│  │  ├── momentum_reversal.md  动量反转分析方法论           │     │
+│  │  ├── volume_price.md       量价分析方法论              │     │
+│  │  ├── pattern.md            形态识别方法论              │     │
+│  │  └── comprehensive.md      综合分析方法论（默认）       │     │
+│  └──────────────────────────────────────────────────────┘     │
+│                                                                │
+│  ┌──────────────────────────────────────────────────────┐     │
+│  │              K-line 数据                               │     │
+│  │   从 market-data 服务获取或从 TimescaleDB 直接读取      │     │
+│  └──────────────────────────────────────────────────────┘     │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -357,24 +449,25 @@ interface TechnicalAnalysisResult {
 services/ta-engine/
 ├── app/
 │   ├── main.py                 # FastAPI 入口
-│   ├── config.py               # 配置（端口、数据源地址等）
+│   ├── config.py               # 配置（端口、数据源地址、LLM 等）
 │   ├── api/
 │   │   └── routes.py           # API 路由
 │   ├── core/
 │   │   ├── operators.py        # 19 个标准算子（ts_mean, delta, rank...）
 │   │   ├── indicators.py       # TA-Lib 指标计算封装
 │   │   ├── factors.py          # 因子注册表 + 15 个因子实现
-│   │   ├── signals.py          # 信号检测（阈值条件判断）
-│   │   └── engines/            # 信号引擎（策略）
-│   │       ├── base.py         # SignalEngine 基类
-│   │       ├── trend.py        # 趋势跟踪引擎
-│   │       ├── momentum.py     # 动量反转引擎
-│   │       ├── volume.py       # 量价分析引擎
-│   │       └── pattern.py      # 形态识别引擎
+│   │   └── signals.py          # 信号检测（阈值条件判断）
+│   ├── skills/                 # Skill 模板（分析方法论）
+│   │   ├── trend_following.md
+│   │   ├── momentum_reversal.md
+│   │   ├── volume_price.md
+│   │   ├── pattern.md
+│   │   └── comprehensive.md    # 默认综合分析
 │   ├── services/
-│   │   ├── analyzer.py         # 分析编排器（组合所有引擎）
+│   │   ├── analyzer.py         # 分析编排器（因子计算 → 信号检测 → LLM 解读）
 │   │   ├── data_fetcher.py     # 从 market-data 获取 K-line
-│   │   └── llm_summarizer.py   # LLM 解读（可选）
+│   │   ├── skill_engine.py     # Skill 加载 + LLM 调用 + 结构化输出
+│   │   └── llm_client.py       # LLM 客户端（DeepSeek / Claude）
 │   └── models/
 │       ├── request.py          # 请求模型
 │       └── response.py         # 响应模型（TechnicalAnalysisResult）
@@ -387,42 +480,86 @@ services/ta-engine/
 
 ```
 POST /api/analyze
-  Body: { "symbol": "AAPL", "market": "us", "period": "1d" }
+  Body: {
+    "symbol": "AAPL",
+    "market": "us",
+    "period": "1d",
+    "skill": "comprehensive"   // 可选，默认 comprehensive
+  }
   Response: TechnicalAnalysisResult (完整分析结果)
 
 GET /api/analyze/{task_id}
   Response: TechnicalAnalysisResult (异步模式，查询结果)
 
+GET /api/skills
+  Response: 可用 Skill 列表 + 描述
+
 GET /api/factors
-  Response: 因子列表 + 当前值
+  Query: symbol=AAPL
+  Response: 因子列表 + 当前值（不含 LLM 解读，纯算法结果）
 
 GET /api/health
   Response: { "status": "ok" }
 ```
 
-### 4.4 与现有系统集成
+### 4.4 分析流程详解
+
+一次完整分析的执行步骤：
+
+```
+1. 接收请求
+   POST /api/analyze { symbol: "AAPL", skill: "comprehensive" }
+
+2. 获取 K-line 数据
+   → 从 market-data 服务拉取 AAPL 日线（最近 250 根）
+
+3. 计算指标（确定性）
+   → TA-Lib 计算 150+ 指标 + 61 个 K线形态
+
+4. 计算因子（确定性）
+   → 15 个因子各自用标准算子计算，输出标准化值
+
+5. 检测信号（确定性）
+   → 每个因子对照阈值条件，输出 triggered/untriggered
+
+6. Skill 引导的 LLM 解读
+   → 加载 comprehensive.md Skill 模板
+   → 将因子值 + 活跃信号 + 指标快照 + Skill 模板 组装成 prompt
+   → 调用 LLM，要求 JSON Schema 约束的输出
+   → 后处理验证：score 范围、signal 枚举、必填字段
+
+7. 返回结果
+   → TechnicalAnalysisResult 完整结构
+```
+
+步骤 1-5 全部是确定性算法，步骤 6 由 Skill 约束 LLM。
+如果 LLM 不可用，步骤 1-5 的结果仍然可以返回（因子值 + 信号列表，只是没有评分和解读）。
+
+### 4.5 与现有系统集成
 
 1. **取代 agent 服务的技术分析能力** — ta-engine 替换掉 agent 服务中 `get_indicators` tool + LLM 直接分析的模式
 2. **复用 BullMQ 队列** — api/business 将分析任务入队，ta-engine 的 worker 消费
 3. **复用 SSE 流式推送** — 前端通过 SSE 实时获取分析进度
 4. **复用 market-data 的 K-line 数据** — ta-engine 从 market-data 服务获取 OHLCV 数据
-5. **LLM 解读层可选** — 可以不开 LLM，纯输出结构化结果
+5. **LLM 解读层可选** — 可以不开 LLM，纯输出因子值和信号列表
 
 ---
 
 ## 五、Roadmap
 
-### V1：时序因子 + 四策略引擎（MVP）— 当前要做的
+### V1：时序因子 + Skill 引导的 LLM 分析（MVP）— 当前要做的
 
 **范围：**
 - 新建 `services/ta-engine/` (FastAPI, 端口 8003)
 - TA-Lib 计算全量指标（150+）+ 61 个 K线形态
 - 15 个时序因子（momentum/reversal/volume/volatility/microstructure）
-- 4 个信号引擎（趋势跟踪 / 动量反转 / 量价分析 / 形态识别）
-- 接入现有分析流程
+- 信号检测（阈值条件判断）
+- 5 个内置 Skill 模板（趋势跟踪 / 动量反转 / 量价分析 / 形态识别 / 综合）
+- Skill 引导的 LLM 评分 + 解读（JSON Schema 约束输出）
+- 接入现有分析流程（BullMQ + SSE）
 - 前端报告页展示四维评分 + 活跃信号 + LLM 解读
 
-**交付物：** 用户输入一个 ticker → 返回完整技术面分析报告
+**交付物：** 用户输入一个 ticker → 选择 Skill → 返回完整技术面分析报告
 
 ### V2：截面因子 + 自选股筛选
 
@@ -456,14 +593,15 @@ GET /api/health
 - 谐波模式：Gartley / Bat / Butterfly（参考 Vibe-Trading `harmonic` skill）
 - SMC 聪明钱：订单块 / 流动性扫荡（参考 Vibe-Trading `smc` skill）
 
-### V5：用户自定义策略 + 因子市场
+### V5：用户自定义策略 + Skill 市场
 
 **新增：**
-- 策略编辑器：Web UI 中用 Python 编写自定义因子和信号逻辑
+- Skill 编辑器：Web UI 中编写自定义分析方法论（Markdown 模板）
 - 因子表达式引擎：支持 `rank(ts_corr(delta(close,1), delta(volume,1), 10))`
 - AST 安全检查：防止前视偏差和危险代码
-- 策略市场：用户发布的策略可被其他人使用和评分
+- Skill 市场：用户发布的 Skill 可被其他人使用和评分
 - 参数优化：网格搜索 / LLM 辅助调参
+- Skill 回测验证：跑历史数据验证 Skill 指导下的分析准确率
 
 ### V6：市场状态感知 + 自适应策略
 
