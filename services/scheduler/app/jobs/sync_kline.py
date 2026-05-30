@@ -24,23 +24,28 @@ STALE_HOURS = {
 }
 
 
-async def _should_skip_external_fetch(symbol: str, interval: str) -> bool:
-    """检查本地是否已有最新数据，有则跳过外部API调用"""
+async def _get_latest_kline_date(symbol: str, interval: str) -> str | None:
+    """获取本地最新K线日期，返回 'YYYY-MM-DD' 格式或 None"""
     try:
         result = await backend_api.get_latest_kline(symbol, interval)
         latest = result.get("latest_at")
         if not latest:
-            return False  # 没有本地数据，需要拉取
+            return None
 
-        from datetime import datetime, timedelta, timezone
+        from datetime import datetime, timezone
         latest_dt = datetime.fromisoformat(latest.replace("Z", "+00:00"))
+        # 判断是否太新不需要更新
+        from datetime import timedelta
         threshold = timedelta(hours=STALE_HOURS.get(interval, 12))
         if datetime.now(timezone.utc) - latest_dt < threshold:
-            logger.info(f"Skipping {interval} for {symbol}: local data is recent ({latest})")
-            return True
+            return "SKIP"  # 特殊标记：数据够新，跳过
+
+        # 返回最新日期的下一天作为 start（避免重复）
+        next_day = latest_dt.date() + timedelta(days=1)
+        return next_day.isoformat()
     except Exception as e:
         logger.warning(f"Failed to check latest kline for {symbol}/{interval}: {e}")
-    return False
+        return None
 
 
 async def sync_all_stock_klines():
@@ -72,17 +77,26 @@ async def sync_all_stock_klines():
     for symbol in symbols:
         for interval, desc in intervals:
             try:
-                # 先检查本地是否已有最新数据
-                if await _should_skip_external_fetch(symbol, interval):
+                # 获取本地最新K线日期，决定是否增量拉取
+                latest_date = await _get_latest_kline_date(symbol, interval)
+
+                if latest_date == "SKIP":
                     success_count += 1
                     continue
 
-                logger.info(f"Syncing {desc} kline for {symbol}...")
-
-                # 获取K线数据
-                result = await data_api.get_kline(
-                    symbol=symbol, interval=interval, limit=252
-                )
+                if latest_date:
+                    # 增量拉取：从最新日期的下一天开始
+                    logger.info(f"Incremental sync {desc} for {symbol} from {latest_date}...")
+                    result = await data_api.get_kline(
+                        symbol=symbol, interval=interval, limit=100,
+                        start=latest_date,
+                    )
+                else:
+                    # 全量拉取：本地无数据
+                    logger.info(f"Full sync {desc} kline for {symbol}...")
+                    result = await data_api.get_kline(
+                        symbol=symbol, interval=interval, limit=252
+                    )
 
                 kline_data = result.get("data", [])
 
@@ -199,10 +213,22 @@ async def sync_single_symbol_klines(symbol: str):
 
     for interval, desc in intervals:
         try:
-            if await _should_skip_external_fetch(symbol, interval):
+            latest_date = await _get_latest_kline_date(symbol, interval)
+
+            if latest_date == "SKIP":
                 continue
 
-            result = await data_api.get_kline(symbol=symbol, interval=interval, limit=252)
+            if latest_date:
+                logger.info(f"Incremental sync {desc} for {symbol} from {latest_date}...")
+                result = await data_api.get_kline(
+                    symbol=symbol, interval=interval, limit=100,
+                    start=latest_date,
+                )
+            else:
+                logger.info(f"Full sync {desc} kline for {symbol}...")
+                result = await data_api.get_kline(
+                    symbol=symbol, interval=interval, limit=252
+                )
 
             kline_data = result.get("data", [])
 

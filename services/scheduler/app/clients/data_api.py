@@ -17,14 +17,18 @@ class DataAPIClient:
         self.base_url = base_url or settings.data_api_url
 
     async def get_kline(
-        self, symbol: str, interval: str = "1d", limit: int = 252
+        self, symbol: str, interval: str = "1d", limit: int = 252,
+        start: str = None,
     ) -> Dict[str, Any]:
-        """获取K线数据"""
+        """获取K线数据，支持 start 参数做增量拉取"""
         try:
+            params = {"symbol": symbol, "interval": interval, "limit": limit}
+            if start:
+                params["start"] = start
             async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.get(
                     f"{self.base_url}/api/kline",
-                    params={"symbol": symbol, "interval": interval, "limit": limit},
+                    params=params,
                 )
                 response.raise_for_status()
                 return response.json()
