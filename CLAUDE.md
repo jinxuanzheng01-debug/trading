@@ -250,6 +250,15 @@ docker compose build && docker compose up -d
 - **事件驱动**: 通过 Redis Streams 接收 watchlist 变更事件
 - **任务**: 自动同步用户自选标的的K线数据
 
+### ta-engine 服务 (端口 8003)
+- **框架**: FastAPI + Python 3.11
+- **指标计算**: TA-Lib（150+ 技术指标 + 61 个 K线形态识别）
+- **因子系统**: 19 个标准算子（ts_mean, delta, rank, ts_corr 等），15 个时序因子
+- **策略引擎**: 4 个信号引擎（趋势跟踪 / 动量反转 / 量价分析 / 形态识别），纯算法评分
+- **数据访问**: 通过 market-data API 获取 K-line 数据，不直连数据库
+- **设计文档**: `docs/specs/2026-05-30-technical-analysis-design.md`
+- **重要**: 此服务不包含 LLM，纯确定性计算。LLM 分析在 VoltAgent 服务（services/agent/）中
+
 ## 未来服务
 
 `services/` 目录可扩展更多 Python 微服务：

@@ -504,7 +504,7 @@ interface TechnicalAnalysisResult {
 │                                                                │
 │  ┌──────────────────────────────────────────────────────┐     │
 │  │              K-line 数据                               │     │
-│  │   从 market-data 服务获取或从 TimescaleDB 直接读取      │     │
+│  │   通过 market-data 服务 API 获取，不直连数据库           │     │
 │  └──────────────────────────────────────────────────────┘     │
 └──────────────────────────────────────────────────────────────┘
 ```
@@ -537,7 +537,7 @@ services/ta-engine/
 │   │   └── weights.yaml        # 综合评分维度权重
 │   ├── services/
 │   │   ├── analyzer.py         # 分析编排器（指标→因子→信号→评分）
-│   │   └── data_fetcher.py     # 从 market-data 获取 K-line
+│   │   └── data_fetcher.py     # 通过 market-data API 获取 K-line
 │   └── models/
 │       ├── request.py          # 请求模型
 │       └── response.py         # 响应模型（TechnicalAnalysisResult）
@@ -763,7 +763,7 @@ V1 时序因子+四策略引擎          ← 当前
 | 框架 | FastAPI | 和现有 market-data / scheduler 保持一致 |
 | 指标计算 | TA-Lib (C + Python wrapper) | 行业标准，200+ 指标 + 61 K线形态，性能最优 |
 | 数据处理 | pandas + numpy | 和 TA-Lib / 算子兼容，Vibe-Trading 也用 pandas |
-| K线数据 | 从 market-data 服务获取 | 复用现有数据源，不重复造轮子 |
+| K线数据 | 通过 market-data API 获取 | 所有服务统一走数据中心的 API，不直连数据库，保持服务边界清晰 |
 | LLM 解读 | DeepSeek Chat (可选) | 现有 agent 服务已配置，成本低 |
 | Docker | 需要 TA-Lib C 库编译 | Dockerfile 中加 `build-base && wget ta-lib && make` |
 
