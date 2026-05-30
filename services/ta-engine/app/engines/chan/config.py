@@ -7,5 +7,5 @@ CHAN_DEFAULT_CONFIG = {
     "zs_combine": True,
     "divergence_rate": 0.8,
     "macd_algo": "area",
-    "bs_type": "1,2,3",
+    "bs_type": "1,2,3a,3b",
 }
