@@ -1,5 +1,5 @@
 """
-数据服务 API 客户端 - 获取K线数据和同步
+数据服务 API 客户端 - 从 market-data 拉取数据
 """
 import httpx
 import logging
@@ -17,12 +17,14 @@ class DataAPIClient:
         self.base_url = base_url or settings.data_api_url
 
     async def get_kline(
-        self, symbol: str, interval: str = "1d", limit: int = 252,
+        self, symbol: str, interval: str = "1d", limit: int = None,
         start: str = None,
     ) -> Dict[str, Any]:
-        """获取K线数据，支持 start 参数做增量拉取"""
+        """获取K线数据。limit=None + start 时返回全部历史数据。"""
         try:
-            params = {"symbol": symbol, "interval": interval, "limit": limit}
+            params = {"symbol": symbol, "interval": interval}
+            if limit is not None:
+                params["limit"] = limit
             if start:
                 params["start"] = start
             async with httpx.AsyncClient(timeout=30.0) as client:
@@ -35,23 +37,6 @@ class DataAPIClient:
         except httpx.HTTPError as e:
             logger.error(f"Failed to fetch kline data for {symbol}: {e}")
             return {"data": []}
-
-    async def sync_kline(
-        self, symbol: str, interval: str, data: List[Dict[str, Any]]
-    ) -> Dict[str, Any]:
-        """同步K线数据到 Backend API 的 stock_quote_history 表"""
-        try:
-            backend_url = getattr(settings, 'backend_api_url', 'http://api:4000')
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                response = await client.post(
-                    f"{backend_url}/api/internal/klines/sync",
-                    json={"symbol": symbol, "interval": interval, "data": data},
-                )
-                response.raise_for_status()
-                return response.json()
-        except httpx.HTTPError as e:
-            logger.error(f"Failed to sync kline data for {symbol}: {e}")
-            return {"success": False, "error": str(e)}
 
     async def get_quotes(self, symbols: List[str]) -> List[Dict[str, Any]]:
         """批量获取股票报价"""

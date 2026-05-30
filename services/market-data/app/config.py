@@ -21,10 +21,6 @@ class Settings(BaseSettings):
     akshare_timeout: int = 10
     akshare_max_retries: int = 3
 
-    # 缓存配置 (秒)
-    cache_quote_ttl: int = 30
-    cache_kline_ttl: int = 300
-
     # 日志
     log_level: str = "INFO"
     log_dir: str = "/var/log/trading-agent"

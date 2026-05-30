@@ -1,25 +1,24 @@
 """
 定时同步股票基本面数据
 
-收盘后同步 PE、EPS、市值等基本面指标
+收盘后同步 PE、EPS、市值等基本面指标（仅美股，yfinance 数据源）
 - US (美股): 05:00 北京时间 (美股收盘后约30分钟)
 """
 import logging
-from typing import List
 
-from ..clients.backend_api import backend_api
+from ..clients.backend_api import backend_api, is_us_stock
 
 logger = logging.getLogger(__name__)
 
 
 async def sync_fundamentals():
     """
-    同步所有股票的基本面数据（PE、EPS、市值等）
+    同步美股基本面数据（PE、EPS、市值等）
 
     流程:
-    1. 从后端 API 获取 stocks 表中所有股票代码
-    2. 分批调用 market-data 获取最新基本面
-    3. 通过后端 API 写入 stock_fundamentals 表
+    1. 从 stocks 表获取所有股票代码，过滤仅保留美股
+    2. 分批调用 backend API 获取最新基本面
+    3. 写入 stock_fundamentals 表
     """
     logger.info("Starting fundamentals sync job...")
 
@@ -29,15 +28,22 @@ async def sync_fundamentals():
         logger.warning("No symbols found, skipping fundamentals sync")
         return
 
-    logger.info(f"Found {len(symbols)} symbols to sync fundamentals")
+    # 仅美股有可靠的 yfinance 基本面数据
+    us_symbols = [s for s in symbols if is_us_stock(s)]
+
+    if not us_symbols:
+        logger.info("No US symbols found, skipping fundamentals sync")
+        return
+
+    logger.info(f"Found {len(us_symbols)} US symbols to sync fundamentals")
 
     success_count = 0
     error_count = 0
 
     # 分批处理，每批 5 个（基本面数据较重）
     batch_size = 5
-    for i in range(0, len(symbols), batch_size):
-        batch = symbols[i:i + batch_size]
+    for i in range(0, len(us_symbols), batch_size):
+        batch = us_symbols[i:i + batch_size]
 
         try:
             logger.info(f"Syncing fundamentals for batch {i//batch_size + 1}: {batch}")

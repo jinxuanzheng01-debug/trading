@@ -18,14 +18,6 @@ class Settings(BaseSettings):
     # 内部服务 token
     service_token: str = "trading-agent-internal-token"
 
-    # Redis
-    redis_url: str = "redis://localhost:6379/0"
-
-    # Stream 配置
-    watchlist_stream: str = "watchlist:events"
-    consumer_group: str = "scheduler"
-    consumer_name: str = "scheduler-1"
-
     # 日志
     log_level: str = "INFO"
     log_dir: str = "/var/log/trading-agent"

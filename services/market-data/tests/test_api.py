@@ -159,34 +159,6 @@ def test_invalid_symbol():
         pytest.skip(f"Service not running at {BASE_URL}")
 
 
-def test_cache_hit():
-    """Test that caching works by making identical requests"""
-    try:
-        symbol = "AAPL"
-        # First request
-        response1 = httpx.get(
-            f"{BASE_URL}/api/quote",
-            params={"symbol": symbol},
-            timeout=10.0
-        )
-        assert response1.status_code == 200
-
-        # Second request should hit cache
-        response2 = httpx.get(
-            f"{BASE_URL}/api/quote",
-            params={"symbol": symbol},
-            timeout=10.0
-        )
-        assert response2.status_code == 200
-
-        # Data should be consistent
-        data1 = response1.json()
-        data2 = response2.json()
-        assert data1["symbol"] == data2["symbol"]
-    except httpx.ConnectError:
-        pytest.skip(f"Service not running at {BASE_URL}")
-
-
 def test_api_docs():
     """Test that API documentation is accessible"""
     try:

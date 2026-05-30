@@ -1,5 +1,5 @@
 """
-后端 API 客户端 - 获取自选列表
+后端 API 客户端 - 写 PG 入口（K线、报价、基本面）
 """
 import httpx
 import logging
@@ -10,27 +10,40 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 
+def is_a_stock(symbol: str) -> bool:
+    """A股：6位数字"""
+    return symbol.isdigit() and len(symbol) == 6
+
+
+def is_hk_stock(symbol: str) -> bool:
+    """港股：<=5位数字"""
+    return symbol.isdigit() and len(symbol) <= 5
+
+
+def is_us_stock(symbol: str) -> bool:
+    """美股：非A股非港股即美股"""
+    return not is_a_stock(symbol) and not is_hk_stock(symbol)
+
+
 class BackendAPIClient:
-    """后端 API 客户端 - 获取自选列表"""
+    """后端 API 客户端 — 数据写入 PG 的入口"""
 
     def __init__(self, base_url: Optional[str] = None):
         self.base_url = base_url or settings.backend_api_url
 
-    async def get_watchlist_symbols(self) -> List[str]:
-        """获取所有自选标的代码"""
+    async def sync_kline(self, symbol: str, interval: str, data: list[dict]) -> dict:
+        """同步K线数据到 klines 表"""
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.get(
-                    f"{self.base_url}/api/watchlist/items"
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                response = await client.post(
+                    f"{self.base_url}/api/internal/klines/sync",
+                    json={"symbol": symbol, "interval": interval, "data": data},
                 )
                 response.raise_for_status()
-                items = response.json().get("items", [])
-                symbols = [item.get("symbol") for item in items if item.get("symbol")]
-                logger.info(f"Fetched {len(symbols)} symbols from backend API")
-                return symbols
+                return response.json()
         except httpx.HTTPError as e:
-            logger.error(f"Failed to fetch watchlist symbols: {e}")
-            return []
+            logger.error(f"Failed to sync kline data for {symbol}: {e}")
+            return {"success": False, "error": str(e)}
 
     async def sync_quotes(self, quotes: List[dict]) -> dict:
         """批量同步报价到 PG（stock_quotes + quote_snapshots）"""

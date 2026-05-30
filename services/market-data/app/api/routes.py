@@ -8,7 +8,6 @@ from .models import (
 )
 from ..services.yfinance_client import YFinanceClient
 from ..services.akshare_client import AkShareClient
-from ..services.cache import cache
 from ..services.indicators import IndicatorsCalculator
 from ..db.models import OHLCV, SyncLog
 from ..db.connection import async_session
@@ -42,29 +41,14 @@ async def health_check():
 
 @router.get("/quote", response_model=QuoteData)
 async def get_quote(symbol: str = Query(..., description="股票代码，如 AAPL, 000001, 0700.HK")):
-    # 先查缓存
-    cached = await cache.get_quote(symbol)
-    if cached:
-        return QuoteData(**cached)
-
-    # 获取实时数据
     client = get_client(symbol)
     quote = await client.get_quote(symbol)
-
-    # 写入缓存
-    await cache.set_quote(symbol, quote.model_dump())
-
     return quote
 
 
 @router.get("/quotes", response_model=QuotesResponse)
 async def get_quotes(symbols: str = Query(..., description="逗号分隔的股票代码")):
     symbol_list = [s.strip() for s in symbols.split(",")][:50]  # 最多50个
-
-    # 先查缓存
-    cached = await cache.get_quotes(symbol_list)
-    if cached:
-        return QuotesResponse(**cached)
 
     # 分组获取（A股/港股用 AkShare，美股用 yfinance）
     aks_symbols = [s for s in symbol_list if aks_client.supports_market(s)]
@@ -76,12 +60,7 @@ async def get_quotes(symbols: str = Query(..., description="逗号分隔的股�
     if yf_symbols:
         results.extend(await yf_client.get_quotes(yf_symbols))
 
-    response = QuotesResponse(data=results, timestamp=datetime.utcnow().isoformat())
-
-    # 写入缓存
-    await cache.set_quotes(symbol_list, response.model_dump())
-
-    return response
+    return QuotesResponse(data=results, timestamp=datetime.utcnow().isoformat())
 
 
 @router.get("/stock/{symbol}", response_model=StockDetailResponse)
@@ -146,7 +125,7 @@ async def get_stock_detail(symbol: str):
 async def get_kline(
     symbol: str = Query(..., description="股票代码"),
     interval: str = Query("1d", description="时间周期: 1d(日线), 1w(周线), 1M(月线)"),
-    limit: int = Query(100, description="返回数量", le=10000),
+    limit: int = Query(None, description="返回数量，不传则返回 start 到 end 之间的全部数据"),
     start: str = Query(None, description="起始日期 YYYY-MM-DD"),
     end: str = Query(None, description="结束日期 YYYY-MM-DD"),
 ):
@@ -157,27 +136,11 @@ async def get_kline(
             status_code=400,
             detail=f"Invalid interval '{interval}'. Must be one of: {', '.join(valid_intervals)}"
         )
-    # 先查缓存（含 start/end/limit 的完整 key）
-    cache_key_params = f"{interval}:{limit}"
-    if start:
-        cache_key_params += f":s={start}"
-    if end:
-        cache_key_params += f":e={end}"
-    cached = await cache.get_kline(symbol, cache_key_params)
-    if cached:
-        return KlineResponse(**cached)
-
     # 获取K线数据
     client = get_client(symbol)
     klines = await client.get_kline(symbol, interval, limit, start, end)
 
-    response = KlineResponse(symbol=symbol, interval=interval, data=klines)
-
-    # 写入缓存
-    await cache.set_kline(symbol, cache_key_params, response.model_dump())
-
-    # datetime serialization handled by Pydantic validators
-    return response
+    return KlineResponse(symbol=symbol, interval=interval, data=klines)
 
 
 @router.get("/kline/batch")

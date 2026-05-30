@@ -1,12 +1,11 @@
 """
 K线数据同步任务
 
-从数据服务获取自选标的的K线数据，并存储到时序数据库
+从数据服务获取所有股票的K线数据，写入时序数据库
 """
 import asyncio
 import logging
-from typing import List
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from ..clients.backend_api import backend_api
 from ..clients.data_api import data_api
@@ -16,31 +15,16 @@ logger = logging.getLogger(__name__)
 # 控频：每次请求间隔（秒），yfinance 免费 API 限制较严格
 REQUEST_DELAY = 2.0
 
-# 数据过期阈值：超过此时间才重新从外部API拉取
-STALE_HOURS = {
-    "1d": 24,   # 日线：24小时内更新过就跳过（每天收盘后才有新数据）
-    "1w": 48,   # 周线：48小时
-    "1M": 72,   # 月线：72小时
-}
-
 
 async def _get_latest_kline_date(symbol: str, interval: str) -> str | None:
-    """获取本地最新K线日期，返回 'YYYY-MM-DD' 格式或 None"""
+    """获取本地最新K线日期的下一天，返回 'YYYY-MM-DD' 格式或 None（无数据时）"""
     try:
         result = await backend_api.get_latest_kline(symbol, interval)
         latest = result.get("latest_at")
         if not latest:
             return None
 
-        from datetime import datetime, timezone
         latest_dt = datetime.fromisoformat(latest.replace("Z", "+00:00"))
-        # 判断是否太新不需要更新
-        from datetime import timedelta
-        threshold = timedelta(hours=STALE_HOURS.get(interval, 12))
-        if datetime.now(timezone.utc) - latest_dt < threshold:
-            return "SKIP"  # 特殊标记：数据够新，跳过
-
-        # 返回最新日期的下一天作为 start（避免重复）
         next_day = latest_dt.date() + timedelta(days=1)
         return next_day.isoformat()
     except Exception as e:
@@ -68,63 +52,50 @@ async def sync_all_stock_klines():
 
     logger.info(f"Found {len(symbols)} symbols to sync: {symbols}")
 
-    # K线周期: 只存日线，周/月线由 SQL 聚合派生
-    intervals = [("1d", "日线")]
-
     success_count = 0
     error_count = 0
 
     for symbol in symbols:
-        for interval, desc in intervals:
-            try:
-                # 获取本地最新K线日期，决定是否增量拉取
-                latest_date = await _get_latest_kline_date(symbol, interval)
+        try:
+            latest_date = await _get_latest_kline_date(symbol, "1d")
 
-                if latest_date == "SKIP":
-                    success_count += 1
-                    continue
+            if latest_date:
+                logger.info(f"Incremental sync for {symbol} from {latest_date}...")
+                result = await data_api.get_kline(
+                    symbol=symbol, interval="1d", limit=100,
+                    start=latest_date,
+                )
+            else:
+                logger.info(f"Full sync kline for {symbol} (no local data)...")
+                result = await data_api.get_kline(
+                    symbol=symbol, interval="1d",
+                    start="1990-01-01",
+                )
 
-                if latest_date:
-                    # 增量拉取：从最新日期的下一天开始
-                    logger.info(f"Incremental sync {desc} for {symbol} from {latest_date}...")
-                    result = await data_api.get_kline(
-                        symbol=symbol, interval=interval, limit=100,
-                        start=latest_date,
-                    )
-                else:
-                    # 全量拉取：本地无数据，从 1990 年开始拉全部历史
-                    logger.info(f"Full sync {desc} kline for {symbol} (no local data)...")
-                    result = await data_api.get_kline(
-                        symbol=symbol, interval=interval, limit=10000,
-                        start="1990-01-01",
-                    )
+            kline_data = result.get("data", [])
 
-                kline_data = result.get("data", [])
+            if not kline_data:
+                logger.warning(f"No kline data for {symbol}")
+                continue
 
-                if not kline_data:
-                    logger.warning(f"No {desc} kline data for {symbol}")
-                    continue
+            sync_result = await backend_api.sync_kline(symbol, "1d", kline_data)
 
-                # 同步到数据库
-                sync_result = await data_api.sync_kline(symbol, interval, kline_data)
-
-                if sync_result.get("success"):
-                    success_count += 1
-                    logger.info(
-                        f"Successfully synced {len(kline_data)} {desc} records for {symbol}"
-                    )
-                else:
-                    error_count += 1
-                    logger.error(
-                        f"Failed to sync {desc} for {symbol}: {sync_result.get('error')}"
-                    )
-
-                # 控频：避免触发 yfinance 限流
-                await asyncio.sleep(REQUEST_DELAY)
-
-            except Exception as e:
+            if sync_result.get("success"):
+                success_count += 1
+                logger.info(
+                    f"Successfully synced {len(kline_data)} records for {symbol}"
+                )
+            else:
                 error_count += 1
-                logger.error(f"Error syncing {desc} for {symbol}: {e}")
+                logger.error(
+                    f"Failed to sync for {symbol}: {sync_result.get('error')}"
+                )
+
+            await asyncio.sleep(REQUEST_DELAY)
+
+        except Exception as e:
+            error_count += 1
+            logger.error(f"Error syncing for {symbol}: {e}")
 
     logger.info(
         f"Kline sync job completed. Success: {success_count}, Errors: {error_count}"
@@ -184,7 +155,7 @@ async def seed_if_empty():
                         failed += 1
                         continue
                     try:
-                        await data_api.sync_kline(sym, "1d", [
+                        await backend_api.sync_kline(sym, "1d", [
                             {"time": k["time"], "open": k["open"], "high": k["high"],
                              "low": k["low"], "close": k["close"], "volume": k["volume"]}
                             for k in klines
@@ -201,56 +172,3 @@ async def seed_if_empty():
         logger.error(f"seed_if_empty 失败: {e}")
 
 
-async def sync_single_symbol_klines(symbol: str):
-    """
-    同步单个标的的K线数据（用于触发式同步）
-
-    Args:
-        symbol: 标的代码
-    """
-    logger.info(f"Syncing klines for single symbol: {symbol}")
-
-    intervals = [("1d", "日线")]
-
-    for interval, desc in intervals:
-        try:
-            latest_date = await _get_latest_kline_date(symbol, interval)
-
-            if latest_date == "SKIP":
-                continue
-
-            if latest_date:
-                logger.info(f"Incremental sync {desc} for {symbol} from {latest_date}...")
-                result = await data_api.get_kline(
-                    symbol=symbol, interval=interval, limit=100,
-                    start=latest_date,
-                )
-            else:
-                logger.info(f"Full sync {desc} kline for {symbol} (no local data)...")
-                result = await data_api.get_kline(
-                    symbol=symbol, interval=interval, limit=10000,
-                    start="2000-01-01",
-                )
-
-            kline_data = result.get("data", [])
-
-            if not kline_data:
-                logger.warning(f"No {desc} kline data for {symbol}")
-                continue
-
-            sync_result = await data_api.sync_kline(symbol, interval, kline_data)
-
-            if sync_result.get("success"):
-                logger.info(
-                    f"Successfully synced {len(kline_data)} {desc} records for {symbol}"
-                )
-            else:
-                logger.error(
-                    f"Failed to sync {desc} for {symbol}: {sync_result.get('error')}"
-                )
-
-            # 控频
-            await asyncio.sleep(REQUEST_DELAY)
-
-        except Exception as e:
-            logger.error(f"Error syncing {desc} for {symbol}: {e}")

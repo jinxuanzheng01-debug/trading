@@ -101,7 +101,7 @@ class YFinanceClient(BaseStockDataProvider):
         self,
         symbol: str,
         interval: str,
-        limit: int,
+        limit: Optional[int] = None,
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None
     ) -> List[KlineData]:
@@ -121,13 +121,14 @@ class YFinanceClient(BaseStockDataProvider):
         end = end_date or datetime.now()
 
         if not start_date:
-            # Use generous lookback to ensure we get enough bars
+            # 无 start 时，用 limit 反推回溯天数
+            effective_limit = limit or 252
             lookback_map = {
-                "1d": timedelta(days=limit * 2),
-                "1w": timedelta(days=limit * 10),
-                "1M": timedelta(days=limit * 40),
+                "1d": timedelta(days=effective_limit * 2),
+                "1w": timedelta(days=effective_limit * 10),
+                "1M": timedelta(days=effective_limit * 40),
             }
-            start = end - lookback_map.get(interval, timedelta(days=limit * 2))
+            start = end - lookback_map.get(interval, timedelta(days=effective_limit * 2))
         else:
             start = start_date
 
@@ -140,8 +141,14 @@ class YFinanceClient(BaseStockDataProvider):
             )
         )
 
+        # 有 start 时返回全部数据，否则按 limit 截断
+        if start_date or limit is None:
+            df_result = df
+        else:
+            df_result = df.tail(limit)
+
         klines = []
-        for timestamp, row in df.tail(limit).iterrows():
+        for timestamp, row in df_result.iterrows():
             klines.append(KlineData(
                 time=timestamp.to_pydatetime().isoformat(),
                 open=float(row['Open']),
