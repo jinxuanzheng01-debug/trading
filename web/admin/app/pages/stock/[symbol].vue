@@ -70,10 +70,15 @@ async function handleLoadMore() {
       <Tabs v-model="currentTab">
         <TabsList>
           <TabsTrigger value="overview">概览</TabsTrigger>
+          <TabsTrigger value="technical">技术分析</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview">
           <StockOverview :data="stockDetail" />
+        </TabsContent>
+
+        <TabsContent value="technical">
+          <StockTechnicalAnalysis :symbol="stockDetail.info.symbol" />
         </TabsContent>
       </Tabs>
     </div>

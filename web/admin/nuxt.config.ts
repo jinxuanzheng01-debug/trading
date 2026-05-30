@@ -52,6 +52,7 @@ export default defineNuxtConfig({
     public: {
       apiBase: process.env.NUXT_PUBLIC_API_BASE || '',
       marketDataApiBase: process.env.NUXT_PUBLIC_MARKET_DATA_API_BASE || 'http://localhost:8000',
+      taEngineApiBase: process.env.NUXT_PUBLIC_TA_ENGINE_API_BASE || 'http://localhost:8003',
     },
   },
 })
