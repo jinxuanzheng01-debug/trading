@@ -56,11 +56,26 @@ Trading Agent 是一个量化分析平台，已完成：
 
 ### 2.2 核心原则
 
-1. **数据层算法化，解读层 Skill 化** — 指标/因子/信号的检测完全由算法完成（零幻觉），最终评分和解读由 LLM + Skill 完成
+1. **全链路算法化，LLM 只做翻译** — 从指标计算到最终评分全部由确定性代码完成（零幻觉、可测试、可回测），LLM 仅将结构化结果翻译成自然语言报告
 2. **因子标准化** — 所有因子用标准算子计算，输出可跨标的、跨时间比较的标准化值
-3. **策略可组合** — 每个策略（信号引擎）独立运行，互不依赖，用户未来可选择启用的策略组合
-4. **取代现有 agent 服务中的 LLM 直接分析模式** — 现有 VoltAgent+DeepSeek 的"让 LLM 看指标猜结论"将被 ta-engine 的工程化计算 + Skill 引导的 LLM 解读取代
-5. **Skill 是知识资产** — 分析方法论沉淀在 Skill 模板中，可迭代、可回测验证、可分享
+3. **策略可组合** — 每个策略（信号引擎）是独立的 Python 类，互不依赖，用户未来可选择启用的策略组合
+4. **取代现有 agent 服务中的 LLM 直接分析模式** — 现有 VoltAgent+DeepSeek 的"让 LLM 看指标猜结论"将被 ta-engine 的纯算法计算取代
+5. **策略配置化** — 策略的参数、权重、阈值通过配置文件定义，可调优、可回测验证
+
+### 2.3 Vibe-Trading Skill 模式的正确理解
+
+调研中发现 Vibe-Trading 的 Skill 模式容易误解，在此澄清：
+
+**Vibe-Trading 实际架构：**
+- `SignalEngine` 是纯 Python 代码（pandas/numpy），不涉及 LLM
+- `example_signal_engine.py` 里的 `generate()` 方法是确定性的：算指标 → 判断条件 → 投票 → 输出 1/-1/0
+- `SKILL.md` 是给 LLM agent 的"知识包"，当用户请求时 LLM 读 Skill 了解方法论，然后**写代码**，代码再确定性执行
+- **不是** LLM 读 Skill 后直接做评分
+
+**对我们项目的启示：**
+- 我们的信号引擎也应该是纯 Python 代码（参考 `technical-basic/example_signal_engine.py` 的模式）
+- "Skill" 在我们项目里对应的是**策略配置文件**（参数 + 权重 + 阈值），不是给 LLM 读的 prompt
+- LLM 的唯一角色是将算法产出的结构化结果翻译成自然语言报告
 
 ### 2.3 因子类型决策
 
@@ -233,97 +248,131 @@ Trading Agent 是一个量化分析平台，已完成：
      得分 > 2 → BUY, 得分 < -2 → SELL, 否则 HOLD
 ```
 
-### 3.7 评分机制：LLM + Skill 模式
+### 3.7 评分机制：纯算法评分
 
-#### 为什么不用固定规则评分
+#### 核心原则
 
-固定权重（如趋势 35% + 动量 30% + 量价 20% + 形态 15%）存在根本问题：
-- 权重是人为拍脑袋定的，没有理论依据
-- 牛市和熊市用同一套权重不合理
-- 不同股票（AAPL vs TSLA）用同一套权重不合理
-- 虽然确定性强，但死板且无法适应上下文
-
-#### 为什么不用裸 LLM 评分
-
-LLM 自由发挥的评分存在信任问题：
-- 无法单元测试和回归测试
-- 同一股票两次分析结果可能不同
-- 出错时难以定位和修复
-- 评分逻辑不可审计
-
-#### 最终方案：LLM + Skill 模式（参考 Vibe-Trading Skills 架构）
-
-**核心思路：** 把专家的分析方法论固化成 Skill 模板，引导 LLM 按规范解读，而不是让它自由发挥。
+从指标到评分，整条链路全部由确定性 Python 代码完成（参考 Vibe-Trading 的 `SignalEngine` 模式）：
 
 ```
-数据层（确定性）：
-  指标 → 因子 → 信号    ← 全部算法计算，零幻觉，可测试
-
-解读层（Skill 约束的 LLM）：
-  因子值 + 信号列表 + Skill 模板 → LLM → 结构化评分 + 解读
-                                    ↑
-                              Skill 模板约束了：
-                              - 信号优先级和冲突处理
-                              - 上下文调整规则
-                              - 输出格式要求
+指标(算法) → 因子(算法) → 信号(算法) → 评分(算法) → 结构化结果
+                                                     ↓
+                                              LLM 翻译成自然语言报告（可选）
 ```
 
-**为什么 Skill 模式比固定规则和裸 LLM 都好：**
+**为什么评分也必须是算法，不能用 LLM：**
 
-| | 固定规则 | 裸 LLM | **LLM + Skill** |
-|---|---|---|---|
-| 数据层 | 算法 ✅ | 算法 ✅ | 算法 ✅ |
-| 评分逻辑 | 硬编码权重 | LLM 自由发挥 | Skill 模板约束 LLM |
-| 可迭代 | 改代码 | 改 prompt，效果不确定 | 改 Skill，方法论可沉淀 |
-| 可信度 | 高但死板 | 低 | Skill 内规则可验证 |
-| 灵活性 | 差 | 高但不可控 | 高且受约束 |
-| 可分享 | 否 | 否 | Skill 可社区分享 |
+| | 算法评分 | LLM 评分 |
+|---|---|---|
+| 确定性 | ✅ 同一输入永远同一输出 | ❌ 非确定性 |
+| 可单元测试 | ✅ 断言固定值 | ❌ 无法回归测试 |
+| 可回测 | ✅ 跑历史数据验证准确率 | ❌ 结果不可复现 |
+| 可调优 | ✅ 改参数/权重，效果可量化 | ❌ 改 prompt，效果不确定 |
+| 可审计 | ✅ 逻辑透明，能解释每个分数来源 | ❌ 黑箱 |
 
-#### Skill 模板示例
+#### 评分实现
 
-```markdown
-# 趋势跟踪分析 Skill
+参考 Vibe-Trading `technical-basic/example_signal_engine.py` 的投票机制：
 
-## 适用场景
-市场处于明确趋势中（ADX > 25，EMA 多头/空头排列）
+```python
+class TrendFollowingEngine:
+    """趋势跟踪信号引擎"""
 
-## 信号优先级
-1. 量价背离 → 最强信号，单独即可触发判断
-2. 动量启动 → 需要量能偏离 > 1.5 确认
-3. 波动收敛 → 只做过滤，不单独触发
+    def __init__(self, config: StrategyConfig):
+        self.config = config  # 参数、权重、阈值从配置读取
 
-## 冲突处理规则
-- 动量看多 + 形态看空 → 降低 confidence，观望为主
-- 多个看涨形态共振(>3) → confidence 额外 +15
-- 量价背离方向与动量方向相反 → 以量价背离为准
+    def generate(self, df: pd.DataFrame) -> StrategyResult:
+        # 1. 计算因子（确定性）
+        factors = self.compute_factors(df)
 
-## 上下文调整
-- 大盘(标普)周线连跌3周 → 所有看多信号 confidence 打8折
-- 财报前一周 → 形态信号可信度降低，量价信号优先
-- 波动率压缩因子 < 0.3 → 提高趋势延续的概率判断
+        # 2. 检测信号（确定性）
+        signals = self.detect_signals(factors)
 
-## 输出要求
-JSON 格式，必须包含：
-- overall_score (-100 ~ +100)
-- signal (BUY / HOLD / SELL)
-- confidence (0 ~ 100)
-- summary (一句话概括)
-- reasons (看多理由列表)
-- risks (风险提示列表)
-- suggestion (操作建议)
+        # 3. 投票/加权评分（确定性）
+        score = 0.0
+        active_signals = []
+
+        if signals.momentum_start.triggered:
+            score += self.config.momentum_weight * signals.momentum_start.strength
+            active_signals.append(signals.momentum_start)
+
+        if signals.volume_resonance.triggered:
+            score += self.config.volume_weight * signals.volume_resonance.strength
+            active_signals.append(signals.volume_resonance)
+
+        # ... 其他信号
+
+        return StrategyResult(
+            score=score,             # -100 ~ +100
+            signal=classify(score),  # BUY / HOLD / SELL
+            confidence=calc_confidence(active_signals),
+            active_signals=active_signals,
+            factors=factors.snapshot()
+        )
 ```
 
-#### V1 内置 Skills
+#### 综合评分
 
-| Skill | 适用场景 | 分析风格 |
-|-------|---------|---------|
-| `trend_following` | ADX > 25，有明确趋势 | 趋势优先，顺势而为 |
-| `momentum_reversal` | RSI 极端值，超买超卖 | 抓拐点，逆势交易 |
-| `volume_price` | 量价关系异常 | 量价验证为主，最保守 |
-| `pattern` | K线形态丰富 | 短线参考，辅助确认 |
-| `comprehensive` | 默认综合分析 | 融合所有维度，平衡观点 |
+多个策略引擎独立评分后，加权汇总：
 
-用户可在前端选择使用哪个 Skill，默认使用 `comprehensive`。
+```python
+def compute_overall(results: Dict[str, StrategyResult]) -> OverallResult:
+    weights = {
+        "trend": 0.35,
+        "momentum": 0.30,
+        "volume": 0.20,
+        "pattern": 0.15,
+    }
+
+    overall_score = sum(
+        weights[name] * result.score
+        for name, result in results.items()
+    )
+
+    return OverallResult(
+        overall_score=overall_score,
+        signal=classify(overall_score),
+        confidence=compute_confidence(results),
+        dimensions=results,
+    )
+```
+
+权重从策略配置文件中读取，后续可通过回测数据优化。
+
+#### LLM 的角色
+
+LLM 只做一件事：**将结构化结果翻译成自然语言报告**。
+
+```python
+# LLM 输入：已经算好的结构化数据
+llm_input = {
+    "symbol": "AAPL",
+    "overall_score": +62,
+    "signal": "BUY",
+    "dimensions": {
+        "trend": {"score": +78, "signal": "BUY", "active_signals": ["MA多头排列", "MACD金叉"]},
+        "momentum": {"score": +55, "signal": "BUY", "active_signals": ["RSI超卖反弹"]},
+        "volume": {"score": +40, "signal": "HOLD", "active_signals": ["量能萎缩"]},
+        "pattern": {"score": +70, "signal": "BUY", "active_signals": ["看涨吞没"]},
+    },
+    "factors": {"momentum_short": 1.2, "rsi_deviation": -1.8, ...},
+    "indicators": {"RSI_14": 32.5, "MACD_hist": 0.34, ...},
+}
+
+# LLM 输出：自然语言解读
+llm_output = """
+当前AAPL技术面综合评分+62，信号BUY。
+
+趋势跟踪(+78)：MA5>MA20>MA60多头排列明确，MACD刚形成金叉，ADX>25表明趋势较强。
+动量震荡(+55)：RSI从超卖区域(32.5)拐头向上，但尚未进入强势区间。
+量价分析(+40)：成交量持续萎缩，量能偏离因子偏低，需关注突破是否有资金确认。
+K线形态(+70)：昨日出现看涨吞没形态，且与趋势方向一致。
+
+风险提示：量能萎缩是主要隐忧，若无放量配合，突破可能失败。
+"""
+```
+
+LLM 不做任何评分决策，只是把已有的数据组织成人类可读的文字。即使 LLM 不可用，结构化结果仍然完整可用。
 
 #### 输出结构：
 
@@ -414,27 +463,44 @@ interface TechnicalAnalysisResult {
 │                    services/ta-engine (新)                     │
 │                    FastAPI, 端口 8003                           │
 │                                                                │
-│  ┌─────────────────┐   ┌──────────────┐                       │
-│  │  指标计算层       │   │  因子+信号引擎 │  ← 数据层：确定性    │
-│  │  TA-Lib          │──►│  多策略独立评分 │     算法计算，零幻觉   │
-│  │  150+ 指标       │   │  信号触发检测  │     可测试，可回测     │
-│  │  61 K线形态      │   └──────┬───────┘                       │
-│  └─────────────────┘          │                                │
-│                               ▼                                │
-│                   ┌───────────────────────┐                    │
-│                   │  Skill 引导的 LLM 解读  │  ← 解读层：Skill   │
-│                   │  DeepSeek / Claude     │     约束 LLM      │
-│                   │  输出评分 + 分析报告    │     方法论可沉淀    │
-│                   └───────────────────────┘                    │
+│  ┌─────────────────────────────────────────────────────────┐  │
+│  │  计算层（全部确定性 Python 代码，参考 Vibe-Trading         │  │
+│  │         technical-basic/example_signal_engine.py 模式）   │  │
+│  │                                                          │  │
+│  │  ┌──────────────┐  ┌──────────────┐  ┌───────────────┐ │  │
+│  │  │  指标计算      │  │  因子计算      │  │  信号检测      │ │  │
+│  │  │  TA-Lib       │─►│  标准算子组合  │─►│  阈值条件判断  │ │  │
+│  │  │  150+ 指标    │  │  15 个因子    │  │  16 个信号    │ │  │
+│  │  │  61 K线形态   │  │              │  │              │ │  │
+│  │  └──────────────┘  └──────────────┘  └───────┬───────┘ │  │
+│  │                                              │         │  │
+│  │  ┌───────────────────────────────────────────┘         │  │
+│  │  │                                                      │  │
+│  │  ▼                                                      │  │
+│  │  ┌──────────────────────────────────────────────────┐  │  │
+│  │  │  评分层（确定性投票/加权）                          │  │  │
+│  │  │                                                    │  │  │
+│  │  │  4 个策略引擎独立评分 → 加权汇总 → 综合评分         │  │  │
+│  │  │  输出：score(-100~+100) + signal(BUY/HOLD/SELL)    │  │  │
+│  │  │        + confidence + active_signals + factors     │  │  │
+│  │  └──────────────────────────────────────────────────┘  │  │
+│  └─────────────────────────────────────────────────────────┘  │
 │                                                                │
-│  ┌──────────────────────────────────────────────────────┐     │
-│  │  Skills/                                              │     │
-│  │  ├── trend_following.md    趋势跟踪分析方法论           │     │
-│  │  ├── momentum_reversal.md  动量反转分析方法论           │     │
-│  │  ├── volume_price.md       量价分析方法论              │     │
-│  │  ├── pattern.md            形态识别方法论              │     │
-│  │  └── comprehensive.md      综合分析方法论（默认）       │     │
-│  └──────────────────────────────────────────────────────┘     │
+│  ┌─────────────────────────────────────────────────────────┐  │
+│  │  策略配置文件                                             │  │
+│  │  strategies/                                              │  │
+│  │  ├── trend_following.yaml    趋势跟踪参数+权重+阈值       │  │
+│  │  ├── momentum_reversal.yaml  动量反转参数+权重+阈值       │  │
+│  │  ├── volume_price.yaml       量价分析参数+权重+阈值       │  │
+│  │  ├── pattern.yaml            形态识别参数+权重+阈值       │  │
+│  │  └── weights.yaml            综合评分维度权重配置         │  │
+│  └─────────────────────────────────────────────────────────┘  │
+│                                                                │
+│  ┌─────────────────────────────────────────────────────────┐  │
+│  │  LLM 翻译层（可选）                                       │  │
+│  │  将结构化结果翻译成自然语言报告                             │  │
+│  │  不参与任何评分决策                                        │  │
+│  └─────────────────────────────────────────────────────────┘  │
 │                                                                │
 │  ┌──────────────────────────────────────────────────────┐     │
 │  │              K-line 数据                               │     │
@@ -449,7 +515,7 @@ interface TechnicalAnalysisResult {
 services/ta-engine/
 ├── app/
 │   ├── main.py                 # FastAPI 入口
-│   ├── config.py               # 配置（端口、数据源地址、LLM 等）
+│   ├── config.py               # 配置（端口、数据源地址等）
 │   ├── api/
 │   │   └── routes.py           # API 路由
 │   ├── core/
@@ -457,17 +523,21 @@ services/ta-engine/
 │   │   ├── indicators.py       # TA-Lib 指标计算封装
 │   │   ├── factors.py          # 因子注册表 + 15 个因子实现
 │   │   └── signals.py          # 信号检测（阈值条件判断）
-│   ├── skills/                 # Skill 模板（分析方法论）
-│   │   ├── trend_following.md
-│   │   ├── momentum_reversal.md
-│   │   ├── volume_price.md
-│   │   ├── pattern.md
-│   │   └── comprehensive.md    # 默认综合分析
+│   ├── engines/                # 信号引擎（策略）— 纯 Python 代码
+│   │   ├── base.py             # SignalEngine 基类
+│   │   ├── trend.py            # 趋势跟踪引擎
+│   │   ├── momentum.py         # 动量反转引擎
+│   │   ├── volume.py           # 量价分析引擎
+│   │   └── pattern.py          # 形态识别引擎
+│   ├── strategies/             # 策略配置文件（参数 + 权重 + 阈值）
+│   │   ├── trend_following.yaml
+│   │   ├── momentum_reversal.yaml
+│   │   ├── volume_price.yaml
+│   │   ├── pattern.yaml
+│   │   └── weights.yaml        # 综合评分维度权重
 │   ├── services/
-│   │   ├── analyzer.py         # 分析编排器（因子计算 → 信号检测 → LLM 解读）
-│   │   ├── data_fetcher.py     # 从 market-data 获取 K-line
-│   │   ├── skill_engine.py     # Skill 加载 + LLM 调用 + 结构化输出
-│   │   └── llm_client.py       # LLM 客户端（DeepSeek / Claude）
+│   │   ├── analyzer.py         # 分析编排器（指标→因子→信号→评分）
+│   │   └── data_fetcher.py     # 从 market-data 获取 K-line
 │   └── models/
 │       ├── request.py          # 请求模型
 │       └── response.py         # 响应模型（TechnicalAnalysisResult）
@@ -542,6 +612,50 @@ GET /api/health
 3. **复用 SSE 流式推送** — 前端通过 SSE 实时获取分析进度
 4. **复用 market-data 的 K-line 数据** — ta-engine 从 market-data 服务获取 OHLCV 数据
 5. **LLM 解读层可选** — 可以不开 LLM，纯输出因子值和信号列表
+
+### 4.6 与 Agent 服务（VoltAgent）的协作
+
+ta-engine 定位是**纯计算层**——不包含 LLM，只输出确定性结构化数据。
+LLM 翻译和后续深度分析放在现有的 **VoltAgent 服务**（`services/agent/`）中。
+
+**职责划分：**
+
+| | ta-engine (新) | agent 服务 (现有 VoltAgent) |
+|---|---|---|
+| 职责 | 纯计算：指标→因子→信号→评分 | 智能分析：LLM 翻译 + 深度推理 |
+| LLM | 无 | DeepSeek / Claude |
+| 输出 | 结构化 JSON（因子、信号、评分） | 自然语言分析报告 |
+| 可测试性 | 100% 可单元测试 | 不可单元测试（LLM 非确定性） |
+
+**V1 协作流程：**
+
+```
+ta-engine
+  │ POST /api/analyze → 返回结构化结果
+  ▼
+VoltAgent 服务
+  │ 拿到 ta-engine 结果 → 调用 LLM 翻译成自然语言报告
+  ▼
+前端（SSE 流式展示）
+```
+
+**后续版本协作流程：**
+
+```
+ta-engine
+  │ 结构化结果（因子 + 信号 + 评分 + 指标快照）
+  ▼
+VoltAgent 服务
+  │ 1. LLM 翻译技术面结果为自然语言
+  │ 2. 结合基本面、新闻情绪做多维解读
+  │ 3. 多 Agent 辩论（多空视角，参考 TradingAgents-CN）
+  │ 4. 结合用户持仓（Paper Trading）给个性化建议
+  │ 5. 自选股池横向对比和排序
+  ▼
+前端（个性化分析报告）
+```
+
+这样 ta-engine 保持纯计算、高可测试性，agent 服务负责所有 LLM 相关的智能分析。
 
 ---
 
