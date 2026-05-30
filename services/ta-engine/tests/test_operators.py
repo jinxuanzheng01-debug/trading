@@ -49,8 +49,8 @@ class TestSafeDiv:
         a = pd.Series([10.0, 20.0])
         b = pd.Series([2.0, 4.0])
         result = safe_div(a, b)
-        assert result.iloc[0] == 5.0
-        assert result.iloc[1] == 5.0
+        assert abs(result.iloc[0] - 5.0) < 1e-6
+        assert abs(result.iloc[1] - 5.0) < 1e-6
 
     def test_zero_denominator(self):
         a = pd.Series([10.0])

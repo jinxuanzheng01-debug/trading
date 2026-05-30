@@ -164,6 +164,20 @@ services:
     networks:
       - trading-net
 
+  ta-engine:
+    build: ./services/ta-engine
+    container_name: trading-agent-ta-engine
+    ports:
+      - "8003:8003"
+    environment:
+      - MARKET_DATA_URL=http://market-data:8000
+      - SERVICE_TOKEN=trading-agent-internal-token
+    depends_on:
+      - market-data
+    restart: unless-stopped
+    networks:
+      - trading-net
+
   # =====================
   # Frontend
   # =====================
