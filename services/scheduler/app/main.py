@@ -6,6 +6,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from app.config import get_settings
 from app.jobs.sync_kline import sync_all_stock_klines, sync_single_symbol_klines
 from app.jobs.sync_stock_quotes import sync_cn_quotes, sync_hk_quotes, sync_us_quotes
+from app.jobs.sync_fundamentals import sync_us_fundamentals
 from app.clients.redis_client import create_consumer_group, read_events, ack_message, close_redis
 
 settings = get_settings()
@@ -106,6 +107,15 @@ async def startup():
         hour=4,
         minute=35,
         id='sync_us_quotes'
+    )
+
+    # 基本面数据同步（PE、EPS、市值等）- 美股收盘后
+    scheduler.add_job(
+        sync_us_fundamentals,
+        'cron',
+        hour=5,
+        minute=0,
+        id='sync_us_fundamentals'
     )
 
     scheduler.start()

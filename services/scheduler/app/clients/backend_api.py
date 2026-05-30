@@ -80,6 +80,21 @@ class BackendAPIClient:
             logger.error(f"Failed to fetch stock symbols: {e}")
             return []
 
+    async def sync_fundamentals(self, symbols: List[str]) -> dict:
+        """同步基本面数据（PE、EPS 等）到 stock_fundamentals 表"""
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                response = await client.post(
+                    f"{self.base_url}/api/internal/fundamentals/sync",
+                    json={"symbols": symbols},
+                    headers={"X-Service-Token": settings.service_token},
+                )
+                response.raise_for_status()
+                return response.json()
+        except httpx.HTTPError as e:
+            logger.error(f"Failed to sync fundamentals: {e}")
+            return {"success": False, "error": str(e)}
+
     async def get_latest_kline(self, symbol: str, interval: str) -> dict:
         """查询本地最新K线日期"""
         try:
