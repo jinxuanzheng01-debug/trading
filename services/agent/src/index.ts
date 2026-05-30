@@ -2,6 +2,7 @@ import { VoltAgent } from '@voltagent/core'
 import { createPinoLogger } from '@voltagent/logger'
 import { honoServer } from '@voltagent/server-hono'
 import { quickAnalysisAgent } from './agents/quick-analysis'
+import { chanAnalystAgent } from './agents/chan-analyst'
 import { startAnalysisWorker } from './worker'
 
 const logger = createPinoLogger({
@@ -10,7 +11,7 @@ const logger = createPinoLogger({
 })
 
 new VoltAgent({
-  agents: { quickAnalysisAgent },
+  agents: { quickAnalysisAgent, chanAnalystAgent },
   logger,
   server: honoServer({
     port: 4001,
