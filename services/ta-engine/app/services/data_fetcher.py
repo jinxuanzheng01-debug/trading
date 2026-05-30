@@ -47,7 +47,7 @@ class DataFetcher:
 
         df = pd.DataFrame(klines)
         # 转换列名和数据类型
-        df["time"] = pd.to_datetime(df["time"])
+        df["time"] = pd.to_datetime(df["time"], utc=True)
         df.set_index("time", inplace=True)
         for col in ["open", "high", "low", "close", "volume"]:
             df[col] = df[col].astype(float)
