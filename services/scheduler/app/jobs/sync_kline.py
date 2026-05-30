@@ -92,10 +92,11 @@ async def sync_all_stock_klines():
                         start=latest_date,
                     )
                 else:
-                    # 全量拉取：本地无数据
-                    logger.info(f"Full sync {desc} kline for {symbol}...")
+                    # 全量拉取：本地无数据，从 2000 年开始拉全部历史
+                    logger.info(f"Full sync {desc} kline for {symbol} (no local data)...")
                     result = await data_api.get_kline(
-                        symbol=symbol, interval=interval, limit=252
+                        symbol=symbol, interval=interval, limit=10000,
+                        start="2000-01-01",
                     )
 
                 kline_data = result.get("data", [])
@@ -225,9 +226,10 @@ async def sync_single_symbol_klines(symbol: str):
                     start=latest_date,
                 )
             else:
-                logger.info(f"Full sync {desc} kline for {symbol}...")
+                logger.info(f"Full sync {desc} kline for {symbol} (no local data)...")
                 result = await data_api.get_kline(
-                    symbol=symbol, interval=interval, limit=252
+                    symbol=symbol, interval=interval, limit=10000,
+                    start="2000-01-01",
                 )
 
             kline_data = result.get("data", [])

@@ -146,7 +146,7 @@ async def get_stock_detail(symbol: str):
 async def get_kline(
     symbol: str = Query(..., description="股票代码"),
     interval: str = Query("1d", description="时间周期: 1d(日线), 1w(周线), 1M(月线)"),
-    limit: int = Query(100, description="返回数量", le=500),
+    limit: int = Query(100, description="返回数量", le=10000),
     start: str = Query(None, description="起始日期 YYYY-MM-DD"),
     end: str = Query(None, description="结束日期 YYYY-MM-DD"),
 ):
