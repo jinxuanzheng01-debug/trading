@@ -19,6 +19,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
     rm -rf /root/.cache
 
 COPY app/ ./app/
+COPY lib/ ./lib/
 
 EXPOSE 8003
 
