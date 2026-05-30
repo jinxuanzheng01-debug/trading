@@ -146,7 +146,9 @@ async def get_stock_detail(symbol: str):
 async def get_kline(
     symbol: str = Query(..., description="股票代码"),
     interval: str = Query("1d", description="时间周期: 1d(日线), 1w(周线), 1M(月线)"),
-    limit: int = Query(100, description="返回数量", le=500)
+    limit: int = Query(100, description="返回数量", le=500),
+    start: str = Query(None, description="起始日期 YYYY-MM-DD"),
+    end: str = Query(None, description="结束日期 YYYY-MM-DD"),
 ):
     # 验证interval参数
     valid_intervals = ["1d", "1w", "1M"]
@@ -155,22 +157,96 @@ async def get_kline(
             status_code=400,
             detail=f"Invalid interval '{interval}'. Must be one of: {', '.join(valid_intervals)}"
         )
-    # 先查缓存
-    cached = await cache.get_kline(symbol, interval)
+    # 先查缓存（含 start/end/limit 的完整 key）
+    cache_key_params = f"{interval}:{limit}"
+    if start:
+        cache_key_params += f":s={start}"
+    if end:
+        cache_key_params += f":e={end}"
+    cached = await cache.get_kline(symbol, cache_key_params)
     if cached:
         return KlineResponse(**cached)
 
     # 获取K线数据
     client = get_client(symbol)
-    klines = await client.get_kline(symbol, interval, limit)
+    klines = await client.get_kline(symbol, interval, limit, start, end)
 
     response = KlineResponse(symbol=symbol, interval=interval, data=klines)
 
     # 写入缓存
-    await cache.set_kline(symbol, interval, response.model_dump())
+    await cache.set_kline(symbol, cache_key_params, response.model_dump())
 
     # datetime serialization handled by Pydantic validators
     return response
+
+
+@router.get("/kline/batch")
+async def get_kline_batch(
+    symbols: str = Query(..., description="逗号分隔的股票代码"),
+    interval: str = Query("1d", description="时间周期: 1d(日线)"),
+    start: str = Query(None, description="起始日期 YYYY-MM-DD"),
+    end: str = Query(None, description="结束日期 YYYY-MM-DD"),
+    limit: int = Query(252, description="返回数量", le=500)
+):
+    """批量获取多只股票的K线数据，使用 yfinance download 一次拉取"""
+    valid_intervals = ["1d", "1w", "1M"]
+    if interval not in valid_intervals:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid interval '{interval}'. Must be one of: {', '.join(valid_intervals)}"
+        )
+
+    symbol_list = [s.strip() for s in symbols.split(",") if s.strip()][:100]
+
+    if not symbol_list:
+        return {"data": {}}
+
+    import asyncio
+
+    # 逐只拉取（batch download 的 MultiIndex 解析在 headless 环境下不稳定）
+    async def _fetch_one(sym):
+        try:
+            c = get_client(sym)
+            klines = await c.get_kline(sym, interval, limit if not start else 99999, start, end)
+            return sym, [k.model_dump() if hasattr(k, 'model_dump') else k for k in klines]
+        except Exception:
+            return sym, []
+
+    tasks = [_fetch_one(s) for s in symbol_list]
+    items = await asyncio.gather(*tasks)
+    result = {sym: data for sym, data in items}
+
+    return {"data": klines_map}
+
+
+@router.get("/quotes/batch")
+async def get_quotes_batch(
+    symbols: str = Query(..., description="逗号分隔的股票代码"),
+):
+    """批量获取多只股票的实时报价"""
+    symbol_list = [s.strip() for s in symbols.split(",") if s.strip()][:100]
+
+    if not symbol_list:
+        return {"data": {}}
+
+    import asyncio
+    result = {}
+
+    async def _fetch_one(sym):
+        try:
+            client = get_client(sym)
+            quote = await client.get_quote(sym)
+            return sym, quote.model_dump() if hasattr(quote, 'model_dump') else quote
+        except Exception:
+            return sym, None
+
+    tasks = [_fetch_one(s) for s in symbol_list]
+    items = await asyncio.gather(*tasks)
+    for sym, quote in items:
+        if quote:
+            result[sym] = quote
+
+    return {"data": result}
 
 
 @router.get("/indicators", response_model=IndicatorsResponse)

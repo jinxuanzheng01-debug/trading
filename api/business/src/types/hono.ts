@@ -1,4 +1,4 @@
-import { Context } from 'hono'
+import type { Context } from 'hono'
 
 export interface UserPayload {
   userId: number
@@ -17,11 +17,10 @@ export interface StockQuoteResponse {
     name: string | null
     type: string | null
     exchange: string | null
-    interval: string
+    price: string | null
     open: string | null
     high: string | null
     low: string | null
-    close: string | null
     volume: number | null
     change: string | null
     change_percent: string | null
@@ -37,22 +36,6 @@ export interface ReorderRequest {
   itemOrders: Array<{
     id: number
     sort_order: number
-  }>
-}
-
-// K-line response types
-export interface KlineResponse {
-  symbol: string
-  interval: string
-  data: Array<{
-    symbol: string
-    interval: string
-    open: number
-    high: number
-    low: number
-    close: number
-    volume: number
-    timestamp: string
   }>
 }
 

@@ -8,6 +8,7 @@ import { watchlistQuotes as watchlistQuotesRoutes } from './routes/watchlist-quo
 import { analysis as analysisRoutes } from './routes/analysis'
 import { internalQuotes as internalQuotesRoutes } from './routes/internal-quotes'
 import stock from './routes/stock'
+import logs from './routes/logs'
 import { paper as paperRoutes } from './routes/paper'
 
 const app = new Hono()
@@ -39,6 +40,7 @@ app.route('/api/watchlist-quotes', watchlistQuotesRoutes)
 app.route('/api/analysis', analysisRoutes)
 app.route('/api/internal', internalQuotesRoutes)
 app.route('/api/stock', stock)
+app.route('/api/logs', logs)
 app.route('/api/paper', paperRoutes)
 
 export { app }

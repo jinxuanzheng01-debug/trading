@@ -16,19 +16,19 @@ const defaultGroupId = ref<number | null>(null)
 async function checkWatchlistStatus() {
   isChecking.value = true
   try {
-    const response = await fetchWithAuth<{ groups: any[] }>(
+    const groups = await fetchWithAuth<any[]>(
       `${config.public.apiBase}/api/watchlist/groups`
     )
 
-    const defaultGroup = response.groups.find((g: any) => g.isDefault)
+    const defaultGroup = groups.find((g: any) => g.isDefault)
     if (defaultGroup) {
       defaultGroupId.value = defaultGroup.id
 
-      const itemsResponse = await fetchWithAuth<{ items: any[] }>(
+      const items = await fetchWithAuth<any[]>(
         `${config.public.apiBase}/api/watchlist/groups/${defaultGroup.id}/items`
       )
 
-      isInWatchlist.value = itemsResponse.items.some((item: any) => item.symbol === props.symbol)
+      isInWatchlist.value = items.some((item: any) => item.symbol === props.symbol)
     }
   } catch (error) {
     console.error('Failed to check watchlist status:', error)
@@ -43,11 +43,11 @@ async function toggleWatchlist() {
   isLoading.value = true
   try {
     if (isInWatchlist.value) {
-      const itemsResponse = await fetchWithAuth<{ items: any[] }>(
+      const items = await fetchWithAuth<any[]>(
         `${config.public.apiBase}/api/watchlist/groups/${defaultGroupId.value}/items`
       )
 
-      const item = itemsResponse.items.find((i: any) => i.symbol === props.symbol)
+      const item = items.find((i: any) => i.symbol === props.symbol)
       if (item) {
         await fetchWithAuth(
           `${config.public.apiBase}/api/watchlist/items/${item.id}`,

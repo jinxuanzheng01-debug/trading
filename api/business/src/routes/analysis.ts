@@ -4,6 +4,7 @@ import { db } from '../db'
 import { analysisRuns } from '../db/schema'
 import { analysisQueue } from '../queue'
 import type { AnalysisJobData } from '../queue/analysis'
+import { serviceTokenAuth } from '../middleware/service-token'
 
 const analysis = new Hono()
 
@@ -56,8 +57,8 @@ analysis.get('/:id', async (c) => {
   })
 })
 
-// 分析完成回调
-analysis.post('/:id/complete', async (c) => {
+// 分析完成回调（内部服务调用，需要 service token）
+analysis.post('/:id/complete', serviceTokenAuth, async (c) => {
   const id = Number(c.req.param('id'))
   const body = await c.req.json()
 
@@ -73,8 +74,8 @@ analysis.post('/:id/complete', async (c) => {
   return c.json({ success: true })
 })
 
-// 分析失败回调
-analysis.post('/:id/fail', async (c) => {
+// 分析失败回调（内部服务调用，需要 service token）
+analysis.post('/:id/fail', serviceTokenAuth, async (c) => {
   const id = Number(c.req.param('id'))
   const body = await c.req.json()
 

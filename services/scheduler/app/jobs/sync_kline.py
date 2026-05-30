@@ -63,12 +63,8 @@ async def sync_all_stock_klines():
 
     logger.info(f"Found {len(symbols)} symbols to sync: {symbols}")
 
-    # K线周期配置: [周期代码, 描述]
-    intervals = [
-        ("1d", "日线"),
-        ("1w", "周线"),
-        ("1M", "月线"),
-    ]
+    # K线周期: 只存日线，周/月线由 SQL 聚合派生
+    intervals = [("1d", "日线")]
 
     success_count = 0
     error_count = 0
@@ -120,6 +116,76 @@ async def sync_all_stock_klines():
     )
 
 
+async def seed_if_empty():
+    """
+    启动时检测：如果 klines 表为空，自动跑全量同步。
+    从 stocks 表获取所有代码，批量拉取全量日线（从 1990-01-01 起）写入 PG。
+    """
+    try:
+        import httpx
+
+        # 检查 klines 是否为空
+        latest_info = await backend_api.get_latest_kline("AAPL", "1d")
+        if latest_info.get("latest_at"):
+            logger.info("klines 表已有数据，跳过全量 seed")
+            return
+
+        logger.info("klines 表为空，开始全量同步...")
+
+        symbols = await backend_api.get_all_stock_symbols()
+        if not symbols:
+            logger.warning("stocks 表为空，跳过 seed")
+            return
+
+        logger.info(f"共 {len(symbols)} 只股票，开始全量拉取日线...")
+
+        batch_size = 50
+        success = 0
+        failed = 0
+
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            for i in range(0, len(symbols), batch_size):
+                batch = symbols[i : i + batch_size]
+                symbols_str = ",".join(batch)
+
+                try:
+                    resp = await client.get(
+                        f"{data_api.base_url}/api/kline/batch",
+                        params={
+                            "symbols": symbols_str,
+                            "interval": "1d",
+                            "start": "1990-01-01",
+                        },
+                    )
+                    data_map = resp.json().get("data", {}) if resp.status_code == 200 else {}
+                except Exception as e:
+                    logger.error(f"批次 {i//batch_size+1} 拉取失败: {e}")
+                    failed += len(batch)
+                    continue
+
+                for sym in batch:
+                    klines = data_map.get(sym, [])
+                    if not klines:
+                        failed += 1
+                        continue
+                    try:
+                        await data_api.sync_kline(sym, "1d", [
+                            {"time": k["time"], "open": k["open"], "high": k["high"],
+                             "low": k["low"], "close": k["close"], "volume": k["volume"]}
+                            for k in klines
+                        ])
+                        success += 1
+                    except Exception:
+                        failed += 1
+
+                await asyncio.sleep(1)
+
+        logger.info(f"全量 seed 完成: {success} 成功, {failed} 失败")
+
+    except Exception as e:
+        logger.error(f"seed_if_empty 失败: {e}")
+
+
 async def sync_single_symbol_klines(symbol: str):
     """
     同步单个标的的K线数据（用于触发式同步）
@@ -129,7 +195,7 @@ async def sync_single_symbol_klines(symbol: str):
     """
     logger.info(f"Syncing klines for single symbol: {symbol}")
 
-    intervals = [("1d", "日线"), ("1w", "周线"), ("1M", "月线")]
+    intervals = [("1d", "日线")]
 
     for interval, desc in intervals:
         try:

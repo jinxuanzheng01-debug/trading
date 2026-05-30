@@ -1,6 +1,6 @@
 <script setup lang="ts">
 const route = useRoute()
-const { fetchStockDetail, fetchKlineData, setPeriod, loading, error, stockDetail, klineData } = useStockDetail()
+const { fetchStockDetail, fetchKlineData, setInterval, loadMoreKline, loading, error, stockDetail, klineData } = useStockDetail()
 
 const symbol = computed(() => (route.params.symbol as string)?.toUpperCase())
 
@@ -18,8 +18,14 @@ watch(symbol, async (newSymbol) => {
   }
 })
 
-async function handlePeriodChange(period: string) {
-  setPeriod(period)
+async function handleIntervalChange(interval: string) {
+  setInterval(interval)
+}
+
+async function handleLoadMore() {
+  if (stockDetail.value) {
+    await loadMoreKline(stockDetail.value.info.symbol)
+  }
 }
 </script>
 
@@ -51,10 +57,13 @@ async function handlePeriodChange(period: string) {
 
       <!-- K线图 -->
       <StockChart
+        v-if="stockDetail && klineData.length > 0"
         :symbol="stockDetail.info.symbol"
         :data="klineData"
         :loading="loading"
-        @period-change="handlePeriodChange"
+        :has-more="true"
+        @interval-change="handleIntervalChange"
+        @load-more="handleLoadMore"
       />
 
       <!-- 标签页 -->

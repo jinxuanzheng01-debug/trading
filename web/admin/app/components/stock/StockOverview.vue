@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { StockDetailResponse } from '@/types/stock'
+import type { StockDetailResponse } from '@trading-agent/types'
 
 interface Props {
   data: StockDetailResponse

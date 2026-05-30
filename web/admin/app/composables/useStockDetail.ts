@@ -1,6 +1,5 @@
-import { ref, readonly, computed } from 'vue'
-import type { StockDetailResponse, KlineData } from '@/types/stock'
-import { KLINE_PERIODS } from '@/types/stock'
+import { ref, readonly } from 'vue'
+import type { StockDetailResponse, KlineData } from '@trading-agent/types'
 
 export function useStockDetail() {
   const config = useRuntimeConfig()
@@ -10,14 +9,11 @@ export function useStockDetail() {
   const klineData = ref<KlineData[]>([])
   const loading = ref(false)
   const error = ref<string | null>(null)
-  const currentPeriod = ref<string>('3M')
   const currentInterval = ref<string>('1d')
+  const klineLimit = ref<number>(252)
 
   const isInWatchlist = ref(false)
 
-  /**
-   * 根据股票代码获取股票详情
-   */
   async function fetchStockDetail(symbol: string) {
     loading.value = true
     error.value = null
@@ -36,18 +32,27 @@ export function useStockDetail() {
     }
   }
 
-  /**
-   * 获取股票的K线数据
-   */
-  async function fetchKlineData(symbol: string) {
+  async function fetchKlineData(symbol: string, startDate?: string) {
     loading.value = true
     error.value = null
 
     try {
-      const response = await fetchWithAuth<{ symbol: string; interval: string; period: string; data: KlineData[] }>(
-        `${config.public.apiBase}/api/stock/${symbol}/kline?interval=${currentInterval.value}&period=${currentPeriod.value}`
-      )
-      klineData.value = response.data
+      let url = `${config.public.apiBase}/api/stock/${symbol}/kline?interval=${currentInterval.value}&limit=${klineLimit.value}`
+      if (startDate) {
+        url += `&start=${startDate}`
+      }
+      const response = await fetchWithAuth<{ symbol: string; interval: string; limit: number; data: KlineData[] }>(url)
+      // merge: if loading more, append to existing data
+      if (startDate && klineData.value.length > 0) {
+        const existingTimestamps = new Set(klineData.value.map(d => d.timestamp))
+        const newItems = response.data.filter(d => !existingTimestamps.has(d.timestamp))
+        if (newItems.length === 0) return // 没有新数据，终止请求
+        klineData.value = [...newItems, ...klineData.value].sort(
+          (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+        )
+      } else {
+        klineData.value = response.data
+      }
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to fetch kline data'
       console.error('Failed to fetch kline data:', e)
@@ -56,29 +61,22 @@ export function useStockDetail() {
     }
   }
 
-  /**
-   * 更改时间周期并重新获取K线数据
-   */
-  function setPeriod(period: string) {
-    if (stockDetail.value && KLINE_PERIODS[period]) {
-      currentPeriod.value = period
-      fetchKlineData(stockDetail.value.info.symbol)
-    }
-  }
-
-  /**
-   * 更改间隔并重新获取K线数据
-   */
   function setInterval(interval: string) {
     if (stockDetail.value) {
       currentInterval.value = interval
+      klineLimit.value = 252
       fetchKlineData(stockDetail.value.info.symbol)
     }
   }
 
-  /**
-   * 刷新所有数据
-   */
+  async function loadMoreKline(symbol: string) {
+    if (loading.value || klineData.value.length === 0) return
+
+    // 用 Unix 时间戳传最早日期，请求更早的 252 根
+    const oldestTs = Math.floor(new Date(klineData.value[0].timestamp).getTime() / 1000)
+    await fetchKlineData(symbol, String(oldestTs))
+  }
+
   async function refresh() {
     if (stockDetail.value) {
       await fetchStockDetail(stockDetail.value.info.symbol)
@@ -86,9 +84,6 @@ export function useStockDetail() {
     }
   }
 
-  /**
-   * 格式化大数字
-   */
   function formatLargeNumber(value: number | undefined): string {
     if (value === undefined || value === null) return '-'
     if (value >= 1e12) return `${(value / 1e12).toFixed(2)}万亿`
@@ -98,17 +93,11 @@ export function useStockDetail() {
     return value.toFixed(2)
   }
 
-  /**
-   * 格式化百分比
-   */
   function formatPercent(value: number | undefined): string {
     if (value === undefined || value === null) return '-'
     return `${value.toFixed(2)}%`
   }
 
-  /**
-   * 获取涨跌颜色类（国内习惯：涨红跌绿）
-   */
   function getChangeClass(value: number | undefined): string {
     if (!value) return ''
     if (value > 0) return 'text-red-500'
@@ -116,9 +105,6 @@ export function useStockDetail() {
     return ''
   }
 
-  /**
-   * 获取涨跌图标
-   */
   function getChangeIcon(value: number | undefined): string {
     if (!value) return ''
     if (value > 0) return 'i-lucide-trending-up'
@@ -131,13 +117,13 @@ export function useStockDetail() {
     klineData: readonly(klineData),
     loading: readonly(loading),
     error: readonly(error),
-    currentPeriod: readonly(currentPeriod),
     currentInterval: readonly(currentInterval),
+    klineLimit: readonly(klineLimit),
     isInWatchlist: readonly(isInWatchlist),
     fetchStockDetail,
     fetchKlineData,
-    setPeriod,
     setInterval,
+    loadMoreKline,
     refresh,
     formatLargeNumber,
     formatPercent,

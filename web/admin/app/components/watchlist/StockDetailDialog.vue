@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { createChart, CandlestickSeries, type IChartApi } from 'lightweight-charts'
 import type { WatchlistItem } from '@/composables/useWatchlist'
-import type { KlineData } from '@/composables/useStockQuotes'
+import type { KlineData } from '@trading-agent/types'
 
 type Interval = '1d' | '1w' | '1M'
 

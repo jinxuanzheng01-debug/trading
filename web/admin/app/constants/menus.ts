@@ -15,6 +15,11 @@ export const navMenu: NavMenu[] = [
         link: '/watchlist',
       },
       {
+        title: 'Stocks',
+        icon: 'i-lucide-list',
+        link: '/stocks',
+      },
+      {
         title: 'Paper Trading',
         icon: 'i-lucide-wallet',
         link: '/paper',
@@ -45,6 +50,16 @@ export const navMenu: NavMenu[] = [
         icon: 'i-lucide-filter',
         link: '/screener',
         disabled: true,
+      },
+    ],
+  },
+  {
+    heading: 'System',
+    items: [
+      {
+        title: 'Logs',
+        icon: 'i-lucide-file-text',
+        link: '/logs',
       },
     ],
   },

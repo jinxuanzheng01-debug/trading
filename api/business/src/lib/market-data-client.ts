@@ -118,15 +118,17 @@ export async function getQuotes(symbols: string[]): Promise<MarketDataQuote[]> {
 export async function getKlines(
   symbol: string,
   interval: string,
-  limit?: number
+  limit?: number,
+  startDate?: string,
+  endDate?: string,
 ): Promise<KlineData[]> {
-  const params = new URLSearchParams({
-    symbol,
-    interval,
-    ...(limit && { limit: limit.toString() })
-  })
+  const params: Record<string, string> = { symbol, interval }
+  if (limit) params.limit = limit.toString()
+  if (startDate) params.start = startDate
+  if (endDate) params.end = endDate
+  const searchParams = new URLSearchParams(params)
 
-  const url = `${MARKET_DATA_BASE}/api/kline?${params}`
+  const url = `${MARKET_DATA_BASE}/api/kline?${searchParams}`
   const response = await fetch(url)
   if (!response.ok) {
     throw new Error(`Market-data service error: ${response.statusText} (${url})`)

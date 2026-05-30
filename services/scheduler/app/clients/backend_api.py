@@ -32,18 +32,37 @@ class BackendAPIClient:
             logger.error(f"Failed to fetch watchlist symbols: {e}")
             return []
 
-    async def update_quotes_cache(self, quotes: List[dict]) -> dict:
-        """批量更新报价缓存"""
+    async def sync_quotes(self, quotes: List[dict]) -> dict:
+        """批量同步报价到 PG（stock_quotes + quote_snapshots）"""
         try:
+            payload = {
+                "quotes": [
+                    {
+                        "symbol": q.get("symbol"),
+                        "price": q.get("price", 0),
+                        "change": q.get("change", 0),
+                        "changePercent": q.get("changePercent", 0),
+                        "open": q.get("open"),
+                        "high": q.get("high"),
+                        "low": q.get("low"),
+                        "volume": q.get("volume", 0),
+                        "prevClose": q.get("previousClose", q.get("prevClose")),
+                        "marketCap": q.get("marketCap", 0),
+                        "currency": q.get("currency", "USD"),
+                    }
+                    for q in quotes
+                ]
+            }
             async with httpx.AsyncClient(timeout=60.0) as client:
                 response = await client.post(
-                    f"{self.base_url}/api/internal/quotes/batch-update",
-                    json=quotes,
+                    f"{self.base_url}/api/internal/quotes/sync",
+                    json=payload,
+                    headers={"X-Service-Token": settings.service_token},
                 )
                 response.raise_for_status()
                 return response.json()
         except httpx.HTTPError as e:
-            logger.error(f"Failed to update quotes cache: {e}")
+            logger.error(f"Failed to sync quotes: {e}")
             return {"success": False, "error": str(e)}
 
     async def get_all_stock_symbols(self) -> List[str]:

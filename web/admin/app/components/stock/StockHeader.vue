@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { StockDetailResponse } from '@/types/stock'
+import type { StockDetailResponse } from '@trading-agent/types'
 
 interface Props {
   data: StockDetailResponse
@@ -28,7 +28,6 @@ const metrics = computed(() => props.data.metrics)
           <Badge v-if="info.sector" variant="outline">{{ info.sector }}</Badge>
         </div>
       </div>
-      <StockWatchlistBtn :symbol="info.symbol" />
     </div>
 
     <!-- 价格部分 -->

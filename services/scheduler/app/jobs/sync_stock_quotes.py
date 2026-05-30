@@ -27,8 +27,8 @@ async def sync_stock_quotes():
     """
     logger.info("Starting stock quotes sync job...")
 
-    # 获取所有自选标的
-    symbols = await backend_api.get_watchlist_symbols()
+    # 获取 stocks 表中所有股票代码
+    symbols = await backend_api.get_all_stock_symbols()
 
     if not symbols:
         logger.warning("No symbols found in watchlist, skipping quotes sync")
@@ -57,7 +57,7 @@ async def sync_stock_quotes():
                 continue
 
             # 更新后端缓存
-            update_result = await backend_api.update_quotes_cache(quotes)
+            update_result = await backend_api.sync_quotes(quotes)
 
             if update_result.get("success"):
                 success_count += len(quotes)

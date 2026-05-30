@@ -3,28 +3,36 @@ from pydantic import BaseModel
 import pandas as pd
 import httpx
 import os
-import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from engine.core import BacktestEngine
-from engine.strategies import IndicatorStrategy
+from engine.strategies import get_strategy_template
 
 router = APIRouter(prefix="/api")
 MARKET_DATA_URL = os.environ.get("MARKET_DATA_URL", "http://market-data:8000")
 
 
 class BacktestRequest(BaseModel):
-    strategy_code: str
+    strategy_name: str  # 策略名称，如 "ma_cross", "macd", "rsi"
     ticker: str
     start_date: str
     end_date: str
     initial_capital: float = 1000000.0
-    fee_model: str = "a_stock"
+    fee_model: str = "us_stock"
+    params: dict = {}  # 策略参数
 
 
 @router.post("/run")
 async def run_backtest(req: BacktestRequest):
     try:
+        # 获取策略模板
+        strategy_class = get_strategy_template(req.strategy_name)
+        if not strategy_class:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unknown strategy: {req.strategy_name}. "
+                       f"Available: ma_cross, macd, rsi, bollinger"
+            )
+
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.get(f"{MARKET_DATA_URL}/api/kline",
                                     params={"symbol": req.ticker, "interval": "1d", "limit": 500})
@@ -44,19 +52,9 @@ async def run_backtest(req: BacktestRequest):
         if len(df) < 10:
             raise HTTPException(status_code=400, detail="Insufficient data")
 
-        local_ns = {"pd": pd, "np": __import__("numpy"), "IndicatorStrategy": IndicatorStrategy}
-        exec(req.strategy_code, local_ns)
-
-        strategy_class = None
-        for v in local_ns.values():
-            if isinstance(v, type) and issubclass(v, IndicatorStrategy) and v is not IndicatorStrategy:
-                strategy_class = v
-                break
-
-        if not strategy_class:
-            raise HTTPException(status_code=400, detail="No IndicatorStrategy subclass found")
-
-        engine = BacktestEngine(strategy_class(), df, req.initial_capital, req.fee_model)
+        # 使用策略参数初始化
+        strategy = strategy_class(**req.params) if req.params else strategy_class()
+        engine = BacktestEngine(strategy, df, req.initial_capital, req.fee_model)
         result = engine.run()
         return {"status": "completed", **result}
 

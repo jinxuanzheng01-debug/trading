@@ -3,6 +3,7 @@ import { eq, desc, sql } from 'drizzle-orm'
 import { db } from '../db'
 import { paperWallets, paperPositions, paperOrders } from '../db/schema'
 import { authMiddleware } from '../middleware/auth'
+import { ok, fail, ErrorCode } from '../lib/response'
 
 const app = new Hono()
 app.use('*', authMiddleware)
@@ -26,7 +27,7 @@ app.post('/wallets', async (c) => {
     cash: String(body.initial_balance),
   }).returning()
 
-  return c.json({ data: wallet })
+  return ok(c, wallet)
 })
 
 // GET /api/paper/wallets
@@ -50,8 +51,8 @@ app.get('/wallets', async (c) => {
       const avg = Number(pos.avgCost)
       try {
         const res = await fetch(`${marketDataBase}/api/quote?symbol=${pos.stockCode}`)
-        const data = await res.json()
-        const lastPrice = data?.price || avg
+        const data: any = await res.json()
+        const lastPrice = Number(data?.price) || avg
         positionsValue += qty * lastPrice
         unrealizedPnl += qty * (lastPrice - avg)
       } catch {
@@ -76,7 +77,7 @@ app.get('/wallets', async (c) => {
     }
   }))
 
-  return c.json({ data: results })
+  return ok(c, results)
 })
 
 // GET /api/paper/wallets/:id
@@ -88,7 +89,7 @@ app.get('/wallets/:id', async (c) => {
     .where(sql`${paperWallets.id} = ${id} AND ${paperWallets.userId} = ${user.id}`)
     .limit(1)
 
-  if (!wallet.length) return c.json({ error: 'Wallet not found' }, 404)
+  if (!wallet.length) return fail(c, ErrorCode.NOT_FOUND, 'Wallet not found')
 
   const positions = await db.select().from(paperPositions)
     .where(eq(paperPositions.walletId, id))
@@ -98,21 +99,19 @@ app.get('/wallets/:id', async (c) => {
   for (const pos of positions) {
     try {
       const res = await fetch(`${marketDataBase}/api/quote?symbol=${pos.stockCode}`)
-      const data = await res.json()
-      positionsValue += Number(pos.quantity) * (data?.price || Number(pos.avgCost))
+      const data: any = await res.json()
+      positionsValue += Number(pos.quantity) * (Number(data?.price) || Number(pos.avgCost))
     } catch {
       positionsValue += Number(pos.quantity) * Number(pos.avgCost)
     }
   }
 
-  return c.json({
-    data: {
-      ...wallet[0],
-      cash: Number(wallet[0].cash),
-      positionsValue,
-      totalAssets: Number(wallet[0].cash) + positionsValue,
-      initialBalance: Number(wallet[0].initialBalance),
-    },
+  return ok(c, {
+    ...wallet[0],
+    cash: Number(wallet[0].cash),
+    positionsValue,
+    totalAssets: Number(wallet[0].cash) + positionsValue,
+    initialBalance: Number(wallet[0].initialBalance),
   })
 })
 
@@ -124,7 +123,7 @@ app.delete('/wallets/:id', async (c) => {
   await db.delete(paperWallets)
     .where(sql`${paperWallets.id} = ${id} AND ${paperWallets.userId} = ${user.id}`)
 
-  return c.json({ data: { id } })
+  return ok(c, { id })
 })
 
 // POST /api/paper/wallets/:id/reset
@@ -136,7 +135,7 @@ app.post('/wallets/:id/reset', async (c) => {
     .where(sql`${paperWallets.id} = ${id} AND ${paperWallets.userId} = ${user.id}`)
     .limit(1)
 
-  if (!wallet) return c.json({ error: 'Wallet not found' }, 404)
+  if (!wallet) return fail(c, ErrorCode.NOT_FOUND, 'Wallet not found')
 
   await db.delete(paperPositions).where(eq(paperPositions.walletId, id))
   await db.delete(paperOrders).where(eq(paperOrders.walletId, id))
@@ -144,7 +143,7 @@ app.post('/wallets/:id/reset', async (c) => {
     .set({ cash: String(wallet.initialBalance), updatedAt: new Date() })
     .where(eq(paperWallets.id, id))
 
-  return c.json({ data: { message: 'Wallet reset', cash: Number(wallet.initialBalance) } })
+  return ok(c, { message: 'Wallet reset', cash: Number(wallet.initialBalance) })
 })
 
 // --- Orders ---
@@ -159,7 +158,7 @@ app.post('/wallets/:id/orders', async (c) => {
     .where(sql`${paperWallets.id} = ${walletId} AND ${paperWallets.userId} = ${user.id}`)
     .limit(1)
 
-  if (!wallet) return c.json({ error: 'Wallet not found' }, 404)
+  if (!wallet) return fail(c, ErrorCode.NOT_FOUND, 'Wallet not found')
 
   const marketDataBase = process.env.MARKET_DATA_API_BASE || 'http://localhost:8000'
 
@@ -168,15 +167,15 @@ app.post('/wallets/:id/orders', async (c) => {
   let stockName = ''
   try {
     const res = await fetch(`${marketDataBase}/api/quote?symbol=${body.stock_code}`)
-    const data = await res.json()
-    fillPrice = data?.price || 0
-    stockName = data?.name || ''
+    const data: any = await res.json()
+    fillPrice = Number(data?.price) || 0
+    stockName = String(data?.name || '')
   } catch {
-    return c.json({ error: 'Failed to fetch quote' }, 500)
+    return fail(c, ErrorCode.MARKET_DATA_UNAVAILABLE, 'Failed to fetch quote')
   }
 
   if (!fillPrice || fillPrice <= 0) {
-    return c.json({ error: 'Invalid quote price' }, 400)
+    return fail(c, ErrorCode.BAD_REQUEST, 'Invalid quote price')
   }
 
   const quantity = body.quantity
@@ -185,7 +184,7 @@ app.post('/wallets/:id/orders', async (c) => {
 
   if (body.side === 'buy') {
     if (cash < amount) {
-      return c.json({ error: `Insufficient cash. Need ${amount}, have ${cash}` }, 400)
+      return fail(c, ErrorCode.BAD_REQUEST, `Insufficient cash. Need ${amount}, have ${cash}`)
     }
 
     // Update or create position with weighted avg cost
@@ -221,8 +220,8 @@ app.post('/wallets/:id/orders', async (c) => {
       .where(sql`${paperPositions.walletId} = ${walletId} AND ${paperPositions.stockCode} = ${body.stock_code}`)
       .limit(1)
 
-    if (!position) return c.json({ error: 'No position for this stock' }, 400)
-    if (Number(position.quantity) < quantity) return c.json({ error: 'Insufficient position quantity' }, 400)
+    if (!position) return fail(c, ErrorCode.BAD_REQUEST, 'No position for this stock')
+    if (Number(position.quantity) < quantity) return fail(c, ErrorCode.BAD_REQUEST, 'Insufficient position quantity')
 
     const remaining = Number(position.quantity) - quantity
     if (remaining <= 0) {
@@ -254,12 +253,10 @@ app.post('/wallets/:id/orders', async (c) => {
     .where(sql`${paperPositions.walletId} = ${walletId} AND ${paperPositions.stockCode} = ${body.stock_code}`)
     .limit(1)
 
-  return c.json({
-    data: {
-      order,
-      position: updatedPosition || null,
-      wallet: { ...updatedWallet, cash: Number(updatedWallet.cash) },
-    },
+  return ok(c, {
+    order,
+    position: updatedPosition || null,
+    wallet: { ...updatedWallet, cash: Number(updatedWallet.cash) },
   })
 })
 
@@ -274,7 +271,7 @@ app.get('/wallets/:id/orders', async (c) => {
     .orderBy(desc(paperOrders.createdAt))
     .limit(limit)
 
-  return c.json({ data: orders })
+  return ok(c, orders)
 })
 
 // --- Positions ---
@@ -293,8 +290,8 @@ app.get('/wallets/:id/positions', async (c) => {
     let lastPrice = Number(pos.avgCost)
     try {
       const res = await fetch(`${marketDataBase}/api/quote?symbol=${pos.stockCode}`)
-      const data = await res.json()
-      if (data?.price) lastPrice = data.price
+      const data: any = await res.json()
+      if (data?.price) lastPrice = Number(data.price)
     } catch { /* use cost as fallback */ }
 
     const qty = Number(pos.quantity)
@@ -310,7 +307,7 @@ app.get('/wallets/:id/positions', async (c) => {
     }
   }))
 
-  return c.json({ data: positionsWithPnl })
+  return ok(c, positionsWithPnl)
 })
 
 // POST /api/paper/wallets/:id/positions — manual position entry
@@ -323,15 +320,15 @@ app.post('/wallets/:id/positions', async (c) => {
     .where(sql`${paperWallets.id} = ${walletId} AND ${paperWallets.userId} = ${user.id}`)
     .limit(1)
 
-  if (!wallet) return c.json({ error: 'Wallet not found' }, 404)
+  if (!wallet) return fail(c, ErrorCode.NOT_FOUND, 'Wallet not found')
 
   const marketDataBase = process.env.MARKET_DATA_API_BASE || 'http://localhost:8000'
 
   let stockName = ''
   try {
     const res = await fetch(`${marketDataBase}/api/quote?symbol=${body.stock_code}`)
-    const data = await res.json()
-    stockName = data?.name || ''
+    const data: any = await res.json()
+    stockName = String(data?.name || '')
   } catch { /* ignore */ }
 
   const [existing] = await db.select().from(paperPositions)
@@ -348,7 +345,7 @@ app.post('/wallets/:id/positions', async (c) => {
       })
       .where(eq(paperPositions.id, existing.id))
       .returning()
-    return c.json({ data: updated })
+    return ok(c, updated)
   }
 
   const [position] = await db.insert(paperPositions).values({
@@ -360,7 +357,7 @@ app.post('/wallets/:id/positions', async (c) => {
     avgCost: String(body.avg_cost),
   }).returning()
 
-  return c.json({ data: position })
+  return ok(c, position)
 })
 
 export { app as paper }

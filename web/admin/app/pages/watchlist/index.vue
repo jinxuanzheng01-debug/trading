@@ -208,7 +208,7 @@ onMounted(() => {
       <!-- Groups Sidebar -->
       <Card class="lg:col-span-1">
         <CardHeader>
-          <CardTitle>Groups</CardTitle>
+          <CardTitle>分组</CardTitle>
         </CardHeader>
         <CardContent>
           <div v-if="isLoadingGroups" class="flex items-center justify-center py-4">
@@ -329,19 +329,7 @@ onMounted(() => {
           <DialogTitle>Add to Watchlist</DialogTitle>
         </DialogHeader>
         <div class="space-y-4 py-4">
-          <div class="space-y-2">
-            <Label for="symbol">Stock Symbol *</Label>
-            <Input
-              id="symbol"
-              v-model="newItem.symbol"
-              placeholder="AAPL, TSLA, MSFT..."
-              @keyup.enter="handleAddItem"
-              autofocus
-            />
-            <p class="text-xs text-muted-foreground">
-              Enter stock symbol (e.g., AAPL for Apple, TSLA for Tesla)
-            </p>
-          </div>
+          <StockSearchInput v-model="newItem.symbol" @select="handleAddItem" />
         </div>
         <DialogFooter>
           <Button variant="outline" @click="showAddItem = false">

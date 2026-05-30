@@ -115,7 +115,7 @@ watchlist.get('/groups/:id/items', async (c) => {
       exchange: stocks.exchange,
       market: stocks.market,
       type: stocks.type,
-      sortOrder: watchlistItems.sort_order,
+      sortOrder: watchlistItems.sortOrder,
       notes: watchlistItems.notes,
       createdAt: watchlistItems.createdAt,
       updatedAt: watchlistItems.updatedAt,
@@ -123,7 +123,7 @@ watchlist.get('/groups/:id/items', async (c) => {
     .from(watchlistItems)
     .innerJoin(stocks, eq(watchlistItems.stockId, stocks.id))
     .where(eq(watchlistItems.groupId, id))
-    .orderBy(watchlistItems.sort_order, watchlistItems.createdAt)
+    .orderBy(watchlistItems.sortOrder, watchlistItems.createdAt)
 
   return ok(c, items)
 })
@@ -255,7 +255,7 @@ watchlist.put('/groups/:groupId/reorder', zValidator('json', reorderSchema), asy
 
   for (let i = 0; i < itemIds.length; i++) {
     await db.update(watchlistItems)
-      .set({ sort_order: i, updatedAt: new Date() })
+      .set({ sortOrder: i, updatedAt: new Date() })
       .where(eq(watchlistItems.id, itemIds[i]))
   }
 

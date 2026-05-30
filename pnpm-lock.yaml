@@ -23,6 +23,9 @@ importers:
       '@hono/zod-validator':
         specifier: ^0.4.0
         version: 0.4.3(hono@4.12.19)(zod@3.25.76)
+      '@trading-agent/types':
+        specifier: workspace:*
+        version: link:../../shared/types
       bcryptjs:
         specifier: ^2.4.3
         version: 2.4.3
@@ -104,6 +107,8 @@ importers:
         specifier: ^5.7.0
         version: 5.9.3
 
+  shared/types: {}
+
   web/admin:
     dependencies:
       '@iconify-json/lucide':
@@ -124,6 +129,9 @@ importers:
       '@tanstack/vue-table':
         specifier: ^8.21.3
         version: 8.21.3(vue@3.5.34(typescript@5.9.3))
+      '@trading-agent/types':
+        specifier: workspace:*
+        version: link:../../shared/types
       '@unovis/ts':
         specifier: ^1.6.1
         version: 1.6.5

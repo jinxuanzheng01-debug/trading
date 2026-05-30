@@ -112,8 +112,24 @@ class YFinanceClient(BaseStockDataProvider):
         }
         yf_interval = interval_map.get(interval, "1d")
 
+        # start/end 可能直接从 API 传入（字符串或 datetime）
+        if isinstance(start_date, str) and start_date:
+            start_date = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+        if isinstance(end_date, str) and end_date:
+            end_date = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+
         end = end_date or datetime.now()
-        start = start_date or (end - timedelta(days=limit * 2))
+
+        if not start_date:
+            # Use generous lookback to ensure we get enough bars
+            lookback_map = {
+                "1d": timedelta(days=limit * 2),
+                "1w": timedelta(days=limit * 10),
+                "1M": timedelta(days=limit * 40),
+            }
+            start = end - lookback_map.get(interval, timedelta(days=limit * 2))
+        else:
+            start = start_date
 
         ticker = await asyncio.to_thread(self._get_ticker, symbol)
         df = await asyncio.to_thread(
@@ -136,6 +152,72 @@ class YFinanceClient(BaseStockDataProvider):
             ))
 
         return klines
+
+    async def get_kline_batch(
+        self,
+        symbols: list[str],
+        interval: str,
+        limit: int,
+        start_date: str = None,
+        end_date: str = None,
+    ) -> dict[str, list[KlineData]]:
+        """批量获取多只股票的K线数据，使用 yfinance download 一次拉取"""
+        interval_map = {
+            "1m": "1m", "5m": "5m", "15m": "15m", "30m": "30m",
+            "1h": "1h", "4h": "4h", "1d": "1d", "1w": "1wk", "1M": "1mo"
+        }
+        yf_interval = interval_map.get(interval, "1d")
+
+        from datetime import datetime, timedelta
+        end = end_date or datetime.now().strftime("%Y-%m-%d")
+        start = start_date or (datetime.now() - timedelta(days=limit * 2)).strftime("%Y-%m-%d")
+
+        # yfinance.download 一次拉多只
+        df = await asyncio.to_thread(
+            lambda: yf.download(
+                tickers=" ".join(symbols),
+                interval=yf_interval,
+                start=start,
+                end=end,
+                group_by="ticker",
+                progress=False,
+            )
+        )
+
+        result: dict[str, list[KlineData]] = {}
+
+        # 处理单只股票的情况（yfinance 返回格式不同）
+        if len(symbols) == 1:
+            sym = symbols[0]
+            klines = []
+            for timestamp, row in df.tail(limit).iterrows():
+                klines.append(KlineData(
+                    time=timestamp.to_pydatetime().isoformat(),
+                    open=float(row['Open']),
+                    high=float(row['High']),
+                    low=float(row['Low']),
+                    close=float(row['Close']),
+                    volume=int(row['Volume'])
+                ))
+            result[sym] = klines
+        else:
+            for sym in symbols:
+                if sym not in df.columns.levels[0]:
+                    continue
+                sym_df = df[sym].dropna()
+                klines = []
+                for timestamp, row in sym_df.tail(limit).iterrows():
+                    klines.append(KlineData(
+                        time=timestamp.to_pydatetime().isoformat(),
+                        open=float(row['Open']),
+                        high=float(row['High']),
+                        low=float(row['Low']),
+                        close=float(row['Close']),
+                        volume=int(row['Volume'])
+                    ))
+                result[sym] = klines
+
+        return result
 
     def _get_ticker(self, symbol: str):
         """同步获取 ticker 对象"""

@@ -9,11 +9,14 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8001
 
-    # 后端 API (获取自选列表)
-    backend_api_url: str = "http://localhost:3002"
+    # 后端 API
+    backend_api_url: str = "http://api:4000"
 
     # 数据服务 API
-    data_api_url: str = "http://localhost:8000"
+    data_api_url: str = "http://market-data:8000"
+
+    # 内部服务 token
+    service_token: str = "trading-agent-internal-token"
 
     # Redis
     redis_url: str = "redis://localhost:6379/0"

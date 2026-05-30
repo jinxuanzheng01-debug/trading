@@ -1,3 +1,5 @@
+import type { KlineData, StockQuote } from '@trading-agent/types'
+
 export interface WatchlistGroup {
   id: number
   userId: number
@@ -116,7 +118,7 @@ export function useWatchlist() {
 
   async function reorderItems(groupId: number, itemOrders: Array<{ id: number, sort_order: number }>) {
     return await fetchWithAuth<WatchlistItem[]>(
-      `${config.public.apiBase}/api/watchlist-quotes/groups/${groupId}/reorder`,
+      `${config.public.apiBase}/api/watchlist/groups/${groupId}/reorder`,
       {
         method: 'PUT',
         body: JSON.stringify({ itemOrders }),

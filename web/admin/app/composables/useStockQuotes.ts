@@ -1,30 +1,8 @@
-export interface StockQuote {
-  symbol: string
-  name: string
-  type: string
-  exchange: string
-  price: number
-  change: number
-  changePercent: number
-  volume: number
-  marketCap: number
-  prevClose: number
-  dataDate: string
-}
-
-export interface KlineData {
-  symbol: string
-  interval: string
-  open: number
-  high: number
-  low: number
-  close: number
-  volume: number
-  timestamp: string
-  dataDate: string
-}
-
+import type { StockQuote, KlineData } from '@trading-agent/types'
 import { ref, readonly } from 'vue'
+
+// Re-export for backward compatibility
+export type { StockQuote, KlineData }
 
 export function useStockQuotes() {
   const config = useRuntimeConfig()

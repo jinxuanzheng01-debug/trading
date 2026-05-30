@@ -33,17 +33,17 @@ async function saveQuotesToDB(quotes: Awaited<ReturnType<typeof getQuotes>>) {
       VALUES (${q.symbol}, ${q.name || null}, ${q.exchange || null}, ${q.type || 'stock'})
       ON CONFLICT (symbol) DO UPDATE SET name = EXCLUDED.name, updated_at = NOW();
 
-      INSERT INTO stock_quotes (stock_id, interval,
-        open, high, low, close, volume, change, change_percent, prev_close,
+      INSERT INTO stock_quotes (stock_id,
+        price, open, high, low, volume, change, change_percent, prev_close,
         timestamp, data_date, updated_at)
-      SELECT s.id, '1d',
-        ${String(q.prevClose)}::numeric, ${String(q.price)}::numeric, ${String(q.price)}::numeric, ${String(q.price)}::numeric,
+      SELECT s.id,
+        ${String(q.price)}::numeric, ${String(q.price)}::numeric, ${String(q.price)}::numeric, ${String(q.price)}::numeric,
         ${q.volume || 0}::bigint, ${String(q.change)}::numeric, ${String(q.changePercent)}::numeric, ${String(q.prevClose)}::numeric,
         NOW(), ${q.dataDate.toISOString()}::timestamp, NOW()
       FROM stocks s WHERE s.symbol = ${q.symbol}
-      ON CONFLICT (stock_id, interval)
+      ON CONFLICT (stock_id)
       DO UPDATE SET
-        open = EXCLUDED.open, high = EXCLUDED.high, low = EXCLUDED.low, close = EXCLUDED.close,
+        price = EXCLUDED.price, open = EXCLUDED.open, high = EXCLUDED.high, low = EXCLUDED.low,
         volume = EXCLUDED.volume, change = EXCLUDED.change, change_percent = EXCLUDED.change_percent,
         prev_close = EXCLUDED.prev_close, timestamp = NOW(), data_date = EXCLUDED.data_date, updated_at = NOW()
     `)
@@ -74,7 +74,7 @@ watchlistQuotes.get('/groups/:groupId/quotes', async (c) => {
       exchange: stocks.exchange,
       market: stocks.market,
       type: stocks.type,
-      sortOrder: watchlistItems.sort_order,
+      sortOrder: watchlistItems.sortOrder,
       notes: watchlistItems.notes,
       createdAt: watchlistItems.createdAt,
       updatedAt: watchlistItems.updatedAt,
@@ -82,7 +82,7 @@ watchlistQuotes.get('/groups/:groupId/quotes', async (c) => {
     .from(watchlistItems)
     .innerJoin(stocks, eq(watchlistItems.stockId, stocks.id))
     .where(eq(watchlistItems.groupId, groupId))
-    .orderBy(watchlistItems.sort_order, watchlistItems.createdAt)
+    .orderBy(watchlistItems.sortOrder, watchlistItems.createdAt)
 
   if (items.length === 0) {
     return ok(c, { items: [], quotes: [] })
@@ -90,13 +90,31 @@ watchlistQuotes.get('/groups/:groupId/quotes', async (c) => {
 
   const symbols = items.map(item => item.symbol)
 
+  // 从 PG 读 stock_quotes 表
+  const quoteRows = await db.execute(sql`
+    SELECT s.symbol, q.price, q.change, q.change_percent as "changePercent",
+           q.open, q.high, q.low, q.volume, q.prev_close as "prevClose",
+           q.market_cap as "marketCap", q.currency
+    FROM stocks s
+    JOIN stock_quotes q ON s.id = q.stock_id
+    WHERE s.symbol = ANY(${symbols}::text[])
+  `) as any
+  const quoteArr = Array.isArray(quoteRows) ? quoteRows : (quoteRows as any).rows || []
+
+  if (quoteArr.length > 0) {
+    const itemsWithQuotes = items.map(item => {
+      const q = quoteArr.find((r: any) => r.symbol === item.symbol)
+      return { ...item, quote: q || null }
+    })
+    return ok(c, { items: itemsWithQuotes, quotes: quoteArr })
+  }
+
+  // PG 无数据，降级 market-data
   try {
     const freshQuotes = await getQuotes(symbols)
     saveQuotesToDB(freshQuotes).catch(err => console.error('Failed to save quotes to DB:', err))
-
     const quotesMap = new Map(freshQuotes.map(quote => [quote.symbol, quote]))
     const itemsWithQuotes = items.map(item => ({ ...item, quote: quotesMap.get(item.symbol) || null }))
-
     return ok(c, { items: itemsWithQuotes, quotes: freshQuotes })
   } catch (error) {
     console.error('Failed to fetch quotes:', error)

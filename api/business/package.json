@@ -13,6 +13,7 @@
     "db:push": "drizzle-kit push"
   },
   "dependencies": {
+    "@trading-agent/types": "workspace:*",
     "@hono/node-server": "^1.14.0",
     "@hono/zod-validator": "^0.4.0",
     "bcryptjs": "^2.4.3",
