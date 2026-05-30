@@ -24,8 +24,8 @@ export interface ActiveSignal {
 }
 
 export function useTechnicalAnalysis() {
-  const config = useRuntimeConfig()
-  const baseUrl = config.public.taEngineApiBase
+  // 走 Nuxt server proxy: /api/ta/* → ta-engine:8003/api/*
+  const baseUrl = '/api/ta'
 
   const result = ref<TechnicalAnalysisResult | null>(null)
   const loading = ref(false)
@@ -37,7 +37,7 @@ export function useTechnicalAnalysis() {
     result.value = null
 
     try {
-      const response = await $fetch<TechnicalAnalysisResult>(`${baseUrl}/api/analyze`, {
+      const response = await $fetch<TechnicalAnalysisResult>(`${baseUrl}/analyze`, {
         method: 'POST',
         body: { symbol, period },
       })

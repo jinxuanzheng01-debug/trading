@@ -192,6 +192,7 @@ services:
       - NUXT_API_PROXY_TARGET=http://api:4000
       - NUXT_AGENT_PROXY_TARGET=http://voltagent:4001
       - NUXT_BACKTEST_PROXY_TARGET=http://backtest:8002
+      - NUXT_TA_ENGINE_PROXY_TARGET=http://ta-engine:8003
       - NUXT_PUBLIC_MARKET_DATA_API_BASE=http://market-data:8000
     depends_on:
       - api

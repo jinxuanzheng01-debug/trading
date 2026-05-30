@@ -11,6 +11,9 @@ export default defineEventHandler(async (event) => {
   } else if (path.startsWith('/api/backtest')) {
     target = config.backtestInternal || 'http://backtest:8002'
     targetPath = path.replace('/api/backtest', '/api')
+  } else if (path.startsWith('/api/ta')) {
+    target = config.taEngineInternal || 'http://ta-engine:8003'
+    targetPath = path.replace('/api/ta', '/api')
   } else {
     target = config.apiBaseInternal || 'http://api:4000'
   }
