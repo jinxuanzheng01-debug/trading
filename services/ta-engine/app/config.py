@@ -11,6 +11,9 @@ class Settings(BaseSettings):
     # market-data 服务地址
     market_data_url: str = "http://market-data:8000"
 
+    # Backend API（PG 读库）
+    backend_api_url: str = "http://api:4000"
+
     # 服务间认证 token
     service_token: str = "trading-agent-internal-token"
 

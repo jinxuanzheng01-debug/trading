@@ -1,4 +1,4 @@
-import { VoltAgent } from '@voltagent/core'
+import { VoltAgent, Memory, InMemoryStorageAdapter } from '@voltagent/core'
 import { createPinoLogger } from '@voltagent/logger'
 import { honoServer } from '@voltagent/server-hono'
 import { quickAnalysisAgent } from './agents/quick-analysis'
@@ -13,8 +13,9 @@ const logger = createPinoLogger({
 new VoltAgent({
   agents: { quickAnalysisAgent, chanAnalystAgent },
   logger,
+  memory: new Memory({ storage: new InMemoryStorageAdapter() }),
   server: honoServer({
-    port: 4001,
+    port: 3141,
   }),
 })
 

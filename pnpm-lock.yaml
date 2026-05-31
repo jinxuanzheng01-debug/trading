@@ -75,6 +75,9 @@ importers:
 
   services/agent:
     dependencies:
+      '@ai-sdk/openai-compatible':
+        specifier: ^2.0.48
+        version: 2.0.48(zod@3.25.76)
       '@voltagent/core':
         specifier: ^2.0.0
         version: 2.7.5(@ai-sdk/provider-utils@4.0.27(zod@3.25.76))(@ai-sdk/provider@3.0.10)(@voltagent/logger@1.0.4(@opentelemetry/api@1.9.1))(ai@6.0.191(zod@3.25.76))(graphql@16.14.0)(ws@8.20.1)(zod@3.25.76)

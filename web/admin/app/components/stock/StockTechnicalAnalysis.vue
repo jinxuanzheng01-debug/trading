@@ -1,6 +1,7 @@
 <script setup lang="ts">
 const props = defineProps<{
   symbol: string
+  interval?: string
 }>()
 
 const {
@@ -16,9 +17,9 @@ const {
   getDirectionColor,
 } = useTechnicalAnalysis()
 
-watch(() => props.symbol, (newSymbol) => {
+watch(() => [props.symbol, props.interval ?? '1d'], ([newSymbol, newInterval]) => {
   if (newSymbol)
-    analyze(newSymbol)
+    analyze(newSymbol, newInterval)
 }, { immediate: true })
 
 // 关键因子（只显示最重要的几个）

@@ -1,13 +1,16 @@
 <script setup lang="ts">
 const props = defineProps<{
   symbol: string
+  interval?: string
 }>()
 
 const { result, loading, error, analyze, llmResult, llmLoading, llmError, analyzeWithLLM } = useChanAnalysis()
 
-watch(() => props.symbol, (newSymbol) => {
+const period = computed(() => props.interval ?? '1d')
+
+watch([() => props.symbol, period], ([newSymbol, newPeriod]) => {
   if (newSymbol) {
-    analyze(newSymbol)
+    analyze(newSymbol, newPeriod)
     llmResult.value = null
   }
 }, { immediate: true })
@@ -19,6 +22,18 @@ const biSummary = computed(() => {
   const upCount = list.filter(b => b.direction === 'up').length
   const downCount = list.length - upCount
   return `共${list.length}笔（↑${upCount} ↓${downCount}），最后${last.direction === 'up' ? '↑' : '↓'}${last.strength.toFixed(1)}%`
+})
+
+const periodLabel = computed(() => {
+  const level = result.value?.level || '1d'
+  return level === '1d' ? '日线' : level === '1w' ? '周线' : level === '1M' ? '月线' : level
+})
+
+const dataRange = computed(() => {
+  if (!result.value) return null
+  const from = (result.value as any).kline_from || result.value.bi_list[0]?.start_time?.slice(0, 10)
+  const to = (result.value as any).kline_to || result.value.bi_list[result.value.bi_list.length - 1]?.end_time?.slice(0, 10)
+  return from && to ? `${from} ~ ${to}` : null
 })
 </script>
 
@@ -46,7 +61,7 @@ const biSummary = computed(() => {
           <div class="flex items-center justify-between">
             <CardTitle class="text-base">结构摘要</CardTitle>
             <div class="flex items-center gap-2">
-              <Button variant="outline" size="sm" :disabled="llmLoading" @click="analyzeWithLLM(symbol)">
+              <Button variant="outline" size="sm" :disabled="llmLoading" @click="analyzeWithLLM(symbol, period)">
                 <Icon name="i-lucide-sparkles" class="size-4 mr-1" />
                 {{ llmResult ? '重新分析' : 'AI 分析' }}
               </Button>
@@ -58,7 +73,8 @@ const biSummary = computed(() => {
         </CardHeader>
         <CardContent>
           <p class="text-lg font-medium">{{ result.summary }}</p>
-          <p v-if="biSummary" class="text-sm text-muted-foreground mt-2">{{ biSummary }}</p>
+          <p v-if="biSummary" class="text-sm text-muted-foreground mt-1">{{ biSummary }}</p>
+          <p v-if="dataRange" class="text-xs text-muted-foreground mt-1">笔覆盖：{{ dataRange }}（{{ periodLabel }} 120条）</p>
         </CardContent>
       </Card>
 
@@ -80,45 +96,46 @@ const biSummary = computed(() => {
           <!-- LLM 错误 -->
           <div v-else-if="llmError" class="text-center py-8">
             <p class="text-destructive mb-2">{{ llmError }}</p>
-            <Button variant="outline" size="sm" @click="analyzeWithLLM(symbol)">重试</Button>
+            <Button variant="outline" size="sm" @click="analyzeWithLLM(symbol, period)">重试</Button>
           </div>
 
           <!-- LLM 结果 -->
           <div v-else-if="llmResult" class="space-y-4">
-            <!-- 位置 + 总结 -->
+            <!-- 白话总结 -->
             <div class="p-4 rounded-lg bg-muted/50">
-              <p class="font-medium">{{ llmResult.position }}</p>
-              <p class="text-sm text-muted-foreground mt-2">{{ llmResult.summary }}</p>
+              <p class="text-sm leading-relaxed">{{ llmResult.plain_text }}</p>
             </div>
 
-            <!-- 中枢分析 + 买卖点 -->
-            <div class="grid grid-cols-2 gap-4">
-              <div v-if="llmResult.zs_analysis" class="p-3 rounded-lg border">
-                <p class="text-xs text-muted-foreground mb-1">中枢分析</p>
-                <p class="text-sm">
-                  {{ llmResult.zs_analysis.level }}{{ llmResult.zs_analysis.type }}
-                  <span class="text-muted-foreground">· 共 {{ llmResult.zs_analysis.count }} 个</span>
-                </p>
-                <div v-if="llmResult.zs_analysis.current_zs" class="text-xs text-muted-foreground mt-1 font-mono">
-                  ZG {{ llmResult.zs_analysis.current_zs.zg }} / ZD {{ llmResult.zs_analysis.current_zs.zd }}
-                </div>
+            <!-- 缠论结构卡片 -->
+            <div v-if="llmResult.chan_structure" class="grid grid-cols-2 gap-3">
+              <div class="p-3 rounded-lg border">
+                <p class="text-xs text-muted-foreground">中枢类型</p>
+                <Badge :variant="llmResult.chan_structure.zs_type.includes('上涨') ? 'default' : 'destructive'">
+                  {{ llmResult.chan_structure.zs_type }}
+                </Badge>
               </div>
-
-              <div v-if="llmResult.bsp_signals?.length" class="p-3 rounded-lg border">
-                <p class="text-xs text-muted-foreground mb-1">买卖点信号</p>
-                <div v-for="(bsp, i) in llmResult.bsp_signals" :key="i" class="text-sm">
-                  <Badge :variant="bsp.type.includes('买') ? 'default' : 'destructive'" class="mr-1">
-                    {{ bsp.type }}
-                  </Badge>
-                  <span class="text-muted-foreground text-xs">{{ bsp.significance }}</span>
-                </div>
+              <div class="p-3 rounded-lg border">
+                <p class="text-xs text-muted-foreground">中枢区间</p>
+                <p class="text-sm font-mono">{{ llmResult.chan_structure.zs_range }}</p>
+              </div>
+              <div class="p-3 rounded-lg border">
+                <p class="text-xs text-muted-foreground">当前位置</p>
+                <p class="text-sm">{{ llmResult.chan_structure.current_position }}</p>
+              </div>
+              <div class="p-3 rounded-lg border">
+                <p class="text-xs text-muted-foreground">最近一笔</p>
+                <p class="text-sm">{{ llmResult.chan_structure.last_bi }}</p>
               </div>
             </div>
 
-            <!-- 背驰 -->
-            <div v-if="llmResult.divergence" class="p-3 rounded-lg border border-yellow-200 bg-yellow-50 dark:bg-yellow-950/20">
-              <p class="text-sm font-medium">{{ llmResult.divergence.type }}</p>
-              <p class="text-xs text-muted-foreground">{{ llmResult.divergence.implication }}</p>
+            <!-- 买卖点信号 -->
+            <div v-if="llmResult.signals?.length" class="space-y-2">
+              <div v-for="(sig, i) in llmResult.signals" :key="i" class="flex items-center gap-3 p-3 rounded-lg border">
+                <Badge :variant="sig.type.includes('买') ? 'default' : 'destructive'">
+                  {{ sig.type }}
+                </Badge>
+                <span class="text-sm text-muted-foreground">{{ sig.meaning }}</span>
+              </div>
             </div>
 
             <!-- 操作建议 -->

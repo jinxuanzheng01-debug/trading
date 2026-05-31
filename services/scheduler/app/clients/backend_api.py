@@ -38,6 +38,7 @@ class BackendAPIClient:
                 response = await client.post(
                     f"{self.base_url}/api/internal/klines/sync",
                     json={"symbol": symbol, "interval": interval, "data": data},
+                    headers={"X-Service-Token": settings.service_token},
                 )
                 response.raise_for_status()
                 return response.json()
@@ -83,7 +84,8 @@ class BackendAPIClient:
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 response = await client.get(
-                    f"{self.base_url}/api/internal/stocks/symbols"
+                    f"{self.base_url}/api/internal/stocks/symbols",
+                    headers={"X-Service-Token": settings.service_token},
                 )
                 response.raise_for_status()
                 symbols = response.json().get("symbols", [])
@@ -115,6 +117,7 @@ class BackendAPIClient:
                 response = await client.get(
                     f"{self.base_url}/api/internal/klines/latest",
                     params={"symbol": symbol, "interval": interval},
+                    headers={"X-Service-Token": settings.service_token},
                 )
                 response.raise_for_status()
                 return response.json()

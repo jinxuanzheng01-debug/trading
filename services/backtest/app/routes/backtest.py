@@ -4,8 +4,8 @@ import pandas as pd
 import httpx
 import os
 
-from engine.core import BacktestEngine
-from engine.strategies import get_strategy_template
+from app.engine.core import BacktestEngine
+from app.engine.strategies import get_strategy_template
 
 router = APIRouter(prefix="/api")
 MARKET_DATA_URL = os.environ.get("MARKET_DATA_URL", "http://market-data:8000")

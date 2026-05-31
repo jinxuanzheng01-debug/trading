@@ -62,6 +62,9 @@ class ChanResult:
     """缠论分析完整结果。"""
     symbol: str
     level: str
+    kline_from: str = ""
+    kline_to: str = ""
+    last_close: float = 0.0
     bi_list: list[BiInfo] = field(default_factory=list)
     seg_list: list[SegInfo] = field(default_factory=list)
     zs_list: list[ZSInfo] = field(default_factory=list)

@@ -15,7 +15,7 @@ export function startAnalysisWorker() {
       console.log(`Processing analysis ${runId}: ${ticker}`)
 
       try {
-        const res = await fetch('http://localhost:4001/agents/quickAnalysisAgent/generate', {
+        const res = await fetch('http://localhost:3141/agents/quickAnalysisAgent/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

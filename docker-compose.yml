@@ -63,18 +63,6 @@ services:
   # =====================
   # Backend Services
   # =====================
-  litellm:
-    image: ghcr.nju.edu.cn/berriai/litellm:main-latest
-    container_name: trading-agent-litellm
-    environment:
-      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:-sk-local-dev}
-    volumes:
-      - ./infra/litellm/config.yaml:/app/config.yaml
-    command: ["--config", "/app/config.yaml", "--port", "4000"]
-    restart: unless-stopped
-    networks:
-      - trading-net
-
   api:
     build:
       context: .
@@ -87,7 +75,7 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - JWT_SECRET=your-super-secret-jwt-key-change-in-production
       - NODE_ENV=production
-      - VOLTAGENT_URL=http://voltagent:4001
+      - VOLTAGENT_URL=http://voltagent:3141
       - BACKTEST_URL=http://backtest:8002
       - MARKET_DATA_API_BASE=http://market-data:8000
     depends_on:
@@ -135,18 +123,17 @@ services:
       dockerfile: ./services/agent/Dockerfile
     container_name: trading-agent-voltagent
     ports:
-      - "4001:4001"
+      - "3141:3141"
     environment:
       - REDIS_URL=redis://redis:6379/0
       - MARKET_DATA_URL=http://market-data:8000
       - BACKEND_URL=http://api:4000
       - OPENAI_API_KEY=${DEEPSEEK_API_KEY:-sk-placeholder}
-      - OPENAI_BASE_URL=http://litellm:4000
+      - OPENAI_BASE_URL=https://api.deepseek.com/v1
       - START_WORKER=true
     depends_on:
       - redis
       - market-data
-      - litellm
     restart: unless-stopped
     networks:
       - trading-net
@@ -190,7 +177,7 @@ services:
       - "3000:3000"
     environment:
       - NUXT_API_PROXY_TARGET=http://api:4000
-      - NUXT_AGENT_PROXY_TARGET=http://voltagent:4001
+      - NUXT_AGENT_PROXY_TARGET=http://voltagent:3141
       - NUXT_BACKTEST_PROXY_TARGET=http://backtest:8002
       - NUXT_TA_ENGINE_PROXY_TARGET=http://ta-engine:8003
       - NUXT_PUBLIC_MARKET_DATA_API_BASE=http://market-data:8000

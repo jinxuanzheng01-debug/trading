@@ -21,7 +21,7 @@ class IndicatorsCalculator:
             'volume': [k.volume for k in klines],
         }
         df = pd.DataFrame(data)
-        df['time'] = pd.to_datetime(df['time'])
+        df['time'] = pd.to_datetime(df['time'], utc=True)
         df.set_index('time', inplace=True)
         return df
 
@@ -57,10 +57,10 @@ class IndicatorsCalculator:
         """计算 RSI"""
         result = {}
         for period in periods:
-            rsi_df = ta.rsi(self.df['close'], length=period)
-            if rsi_df is not None and not rsi_df.empty:
-                rsi = rsi_df.iloc[-1].iloc[0]
-                result[f'RSI{period}'] = float(rsi) if pd.notna(rsi) else None
+            rsi_series = ta.rsi(self.df['close'], length=period)
+            if rsi_series is not None and len(rsi_series) > 0:
+                last_val = rsi_series.iloc[-1] if hasattr(rsi_series, 'iloc') else rsi_series
+                result[f'RSI{period}'] = float(last_val) if pd.notna(last_val) else None
         return result
 
     def calculate_kdj(self, n: int = 9, m1: int = 3, m2: int = 3) -> Dict[str, Optional[float]]:
@@ -93,20 +93,21 @@ class IndicatorsCalculator:
         return {'upper': None, 'middle': None, 'lower': None, 'bandwidth': None}
 
     def calculate_all(self, indicator_list: List[str]) -> Dict:
-        """计算所有请求的指标"""
+        """计算所有请求的指标（大小写不敏感）"""
         result = {}
+        upper = [i.upper() for i in indicator_list]
 
-        if 'MA' in indicator_list or 'all' in indicator_list:
+        if 'MA' in upper or 'all' in upper:
             result['MA'] = self.calculate_ma()
-        if 'EMA' in indicator_list or 'all' in indicator_list:
+        if 'EMA' in upper or 'all' in upper:
             result['EMA'] = self.calculate_ema()
-        if 'MACD' in indicator_list or 'all' in indicator_list:
+        if 'MACD' in upper or 'all' in upper:
             result['MACD'] = self.calculate_macd()
-        if 'RSI' in indicator_list or 'all' in indicator_list:
+        if 'RSI' in upper or 'all' in upper:
             result['RSI'] = self.calculate_rsi()
-        if 'KDJ' in indicator_list or 'all' in indicator_list:
+        if 'KDJ' in upper or 'all' in upper:
             result['KDJ'] = self.calculate_kdj()
-        if 'BB' in indicator_list or 'Bollinger' in indicator_list or 'all' in indicator_list:
+        if 'BB' in upper or 'BOLLINGER' in upper or 'all' in upper:
             result['BB'] = self.calculate_bollinger_bands()
 
         return result

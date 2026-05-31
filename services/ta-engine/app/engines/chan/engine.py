@@ -60,7 +60,7 @@ class ChanEngine:
 
         if len(kl_units) < 10:
             logger.warning("Insufficient K-lines for %s: %d", symbol, len(kl_units))
-            return ChanResult(symbol=symbol, level=level)
+            return ChanResult(symbol=symbol, level=level, kline_from=kline_from, kline_to=kline_to)
 
         lv = self._level_to_kl_type(level)
 
@@ -92,7 +92,10 @@ class ChanEngine:
             except Exception:
                 logger.debug("BSP calculation skipped for %s", _lv, exc_info=True)
 
-        return self._extract(chan, symbol, level)
+        kline_from = df.index[0].strftime("%Y-%m-%d") if hasattr(df.index[0], "strftime") else str(df.index[0])[:10]
+        kline_to = df.index[-1].strftime("%Y-%m-%d") if hasattr(df.index[-1], "strftime") else str(df.index[-1])[:10]
+        last_close = float(df.iloc[-1]["close"])
+        return self._extract(chan, symbol, level, kline_from, kline_to, last_close)
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -116,13 +119,18 @@ class ChanEngine:
             logger.warning("Unknown level %r, falling back to K_DAY", level)
             return KL_TYPE.K_DAY
 
-    def _extract(self, chan: CChan, symbol: str, level: str) -> ChanResult:
+    @staticmethod
+    def _fmt_time(ct) -> str:
+        """将 CTime 转为统一格式 YYYY-MM-DD HH:MM:SS+00。"""
+        return f"{ct.year:04d}-{ct.month:02d}-{ct.day:02d} {ct.hour:02d}:{ct.minute:02d}:00+00"
+
+    def _extract(self, chan: CChan, symbol: str, level: str, kline_from: str = "", kline_to: str = "", last_close: float = 0.0) -> ChanResult:
         """从 CChan 实例中提取 Bi/Seg/ZS/BSP 等结构化数据。"""
         try:
             kl_list = chan[0]  # lv_list = [lv], 所以索引 0 即该级别
         except (IndexError, KeyError) as exc:
             logger.error("Failed to access chan[0] for %s: %s", symbol, exc)
-            return ChanResult(symbol=symbol, level=level)
+            return ChanResult(symbol=symbol, level=level, kline_from=kline_from, kline_to=kline_to)
 
         # ---- 笔 ----
         bi_list: list[BiInfo] = []
@@ -138,8 +146,8 @@ class ChanEngine:
                 bi_list.append(
                     BiInfo(
                         direction="up" if bi.is_up() else "down",
-                        start_time=str(bi.get_begin_klu().time),
-                        end_time=str(bi.get_end_klu().time),
+                        start_time=self._fmt_time(bi.get_begin_klu().time),
+                        end_time=self._fmt_time(bi.get_end_klu().time),
                         start_price=begin_val,
                         end_price=end_val,
                         strength=strength,
@@ -156,8 +164,8 @@ class ChanEngine:
                 seg_list.append(
                     SegInfo(
                         direction="up" if seg.is_up() else "down",
-                        start_time=str(seg.start_bi.get_begin_klu().time),
-                        end_time=str(seg.end_bi.get_end_klu().time),
+                        start_time=self._fmt_time(seg.start_bi.get_begin_klu().time),
+                        end_time=self._fmt_time(seg.end_bi.get_end_klu().time),
                         start_price=float(seg.get_begin_val()),
                         end_price=float(seg.get_end_val()),
                         bi_count=len(getattr(seg, "bi_list", []) or []),
@@ -183,8 +191,8 @@ class ChanEngine:
                             low=float(zs.low),
                             zg=float(zs.high),
                             zd=float(zs.low),
-                            start_time=str(zs.begin.time),
-                            end_time=str(zs.end.time),
+                            start_time=self._fmt_time(zs.begin.time),
+                            end_time=self._fmt_time(zs.end.time),
                         )
                     )
                 except Exception as exc:
@@ -199,6 +207,9 @@ class ChanEngine:
         return ChanResult(
             symbol=symbol,
             level=level,
+            kline_from=kline_from,
+            kline_to=kline_to,
+            last_close=last_close,
             bi_list=bi_list,
             seg_list=seg_list,
             zs_list=zs_list,
@@ -220,6 +231,6 @@ class ChanEngine:
 
         if bi_list:
             last_bi = bi_list[-1]
-            parts.append(f"最后一笔为{last_bi.direction}笔")
+            parts.append(f"最后一笔为{last_bi.direction}笔（截至{last_bi.end_time[:10]}）")
 
         return "，".join(parts) if parts else "无显著结构"

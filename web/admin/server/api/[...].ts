@@ -6,7 +6,7 @@ export default defineEventHandler(async (event) => {
   let targetPath = path
 
   if (path.startsWith('/api/agent')) {
-    target = config.agentInternal || 'http://voltagent:4001'
+    target = config.agentInternal || 'http://voltagent:3141'
     targetPath = path.replace('/api/agent', '')
   } else if (path.startsWith('/api/backtest')) {
     target = config.backtestInternal || 'http://backtest:8002'
@@ -23,7 +23,11 @@ export default defineEventHandler(async (event) => {
       ? await readRawBody(event)
       : undefined
 
+    const timeout = path.startsWith('/api/chan/llm') ? 120000 : 30000
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), timeout)
     const response = await fetch(target + targetPath, {
+      signal: controller.signal,
       method: event.method,
       headers: {
         'Content-Type': 'application/json',
@@ -33,9 +37,11 @@ export default defineEventHandler(async (event) => {
     })
 
     const data = await response.json()
+    clearTimeout(timer)
     setResponseStatus(event, response.status)
     return data
   } catch (err: any) {
+    clearTimeout(timer)
     setResponseStatus(event, 502)
     return { success: false, error: err.message || 'Proxy error' }
   }

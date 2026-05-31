@@ -5,6 +5,7 @@ const { fetchStockDetail, fetchKlineData, setInterval, loadMoreKline, loading, e
 const symbol = computed(() => (route.params.symbol as string)?.toUpperCase())
 
 const currentTab = ref('overview')
+const currentInterval = ref('1d')
 
 onMounted(async () => {
   await fetchStockDetail(symbol.value)
@@ -19,6 +20,7 @@ watch(symbol, async (newSymbol) => {
 })
 
 async function handleIntervalChange(interval: string) {
+  currentInterval.value = interval
   setInterval(interval)
 }
 
@@ -71,6 +73,7 @@ async function handleLoadMore() {
         <TabsList>
           <TabsTrigger value="overview">概览</TabsTrigger>
           <TabsTrigger value="technical">技术分析</TabsTrigger>
+          <TabsTrigger value="chan">缠论</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview">
@@ -78,7 +81,11 @@ async function handleLoadMore() {
         </TabsContent>
 
         <TabsContent value="technical">
-          <StockTechnicalAnalysis :symbol="stockDetail.info.symbol" />
+          <StockTechnicalAnalysis :symbol="stockDetail.info.symbol" :interval="currentInterval" />
+        </TabsContent>
+
+        <TabsContent value="chan">
+          <StockChanAnalysis :symbol="stockDetail.info.symbol" :interval="currentInterval" />
         </TabsContent>
       </Tabs>
     </div>

@@ -1,6 +1,6 @@
 import { createTool } from '@voltagent/core'
 import { z } from 'zod'
-import { fetchMarketData } from '../../shared/market-data'
+import { fetchMarketData, fetchBackendAPI } from '../../shared/market-data'
 
 export const getQuoteTool = createTool({
   name: 'get_quote',
@@ -13,14 +13,14 @@ export const getQuoteTool = createTool({
 
 export const getKlineTool = createTool({
   name: 'get_kline',
-  description: '获取K线数据',
+  description: '获取K线数据（从数据库读取）',
   parameters: z.object({
     symbol: z.string().describe('股票代码'),
     interval: z.string().default('1d'),
     limit: z.number().default(100),
   }),
   execute: async ({ symbol, interval, limit }) =>
-    fetchMarketData(`/api/kline?symbol=${encodeURIComponent(symbol)}&interval=${interval}&limit=${limit}`),
+    fetchBackendAPI(`/api/stock/${encodeURIComponent(symbol)}/kline?interval=${interval}&limit=${limit}`),
 })
 
 export const getIndicatorsTool = createTool({

@@ -37,6 +37,9 @@ export interface BSPInfo {
 export interface ChanResult {
   symbol: string
   level: string
+  kline_from: string
+  kline_to: string
+  last_close: number
   bi_list: BiInfo[]
   seg_list: SegInfo[]
   zs_list: ZSInfo[]
@@ -46,16 +49,9 @@ export interface ChanResult {
 }
 
 export interface ChanLLMResult {
-  position: string
-  zs_analysis: {
-    level: string
-    type: string
-    count: number
-    current_zs?: { high: number; low: number; zg: number; zd: number }
-  }
-  bsp_signals: Array<{ type: string; price?: number; significance: string }>
-  divergence?: { type: string; implication: string }
-  summary: string
+  plain_text: string
+  chan_structure: { zs_type: string; zs_range: string; current_position: string; last_bi: string }
+  signals: Array<{ type: string; meaning: string }>
   suggestion: string
 }
 
@@ -87,56 +83,18 @@ export function useChanAnalysis() {
   }
 
   async function analyzeWithLLM(symbol: string, period = '1d') {
-    // 先拿到原始数据
-    if (!result.value || result.value.symbol !== symbol) {
-      await analyze(symbol, period)
-    }
-    if (!result.value) return
-
     llmLoading.value = true
     llmError.value = null
 
-    // 精简数据发给 LLM，避免 token 浪费
-    const { bi_list, seg_list, zs_list, bsp_list, divergence, summary } = result.value
-    const briefData = {
-      symbol,
-      level: period,
-      summary,
-      zs_count: zs_list.length,
-      zs_list: zs_list.map(z => ({
-        type: z.type, zg: z.zg.toFixed(2), zd: z.zd.toFixed(2),
-        start: z.start_time, end: z.end_time,
-      })),
-      bi_count: bi_list.length,
-      recent_bi: bi_list.slice(-5).map(b => ({
-        dir: b.direction, start: b.start_price.toFixed(2), end: b.end_price.toFixed(2),
-        pct: `${b.strength > 0 ? '+' : ''}${b.strength.toFixed(1)}%`,
-        from: b.start_time,
-      })),
-      seg_count: seg_list.length,
-    }
-
     try {
-      const res = await $fetch<{ text?: string; content?: string }>(
-        '/api/agent/agents/chanAnalystAgent/generate',
+      llmResult.value = await $fetch<ChanLLMResult>(
+        '/api/chan/llm',
         {
           method: 'POST',
-          body: {
-            messages: [{
-              role: 'user',
-              content: `请分析以下缠论结构数据，给出买卖点判断和操作建议：\n\`\`\`json\n${JSON.stringify(briefData, null, 2)}\n\`\`\``,
-            }],
-          },
+          body: { symbol, period },
+          timeout: 120000,
         },
       )
-      const text = res?.text || res?.content || ''
-      const jsonMatch = text.match(/\{[\s\S]*\}/)
-      if (jsonMatch) {
-        llmResult.value = JSON.parse(jsonMatch[0])
-      }
-      else {
-        llmError.value = 'LLM 返回格式异常'
-      }
     }
     catch (e: any) {
       llmError.value = e?.message || 'LLM 分析请求失败'

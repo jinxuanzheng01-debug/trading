@@ -47,7 +47,7 @@ export default defineNuxtConfig({
 
   runtimeConfig: {
     apiBaseInternal: process.env.NUXT_API_PROXY_TARGET || 'http://api:4000',
-    agentInternal: process.env.NUXT_AGENT_PROXY_TARGET || 'http://voltagent:4001',
+    agentInternal: process.env.NUXT_AGENT_PROXY_TARGET || 'http://voltagent:3141',
     backtestInternal: process.env.NUXT_BACKTEST_PROXY_TARGET || 'http://backtest:8002',
     taEngineInternal: process.env.NUXT_TA_ENGINE_PROXY_TARGET || 'http://ta-engine:8003',
     public: {

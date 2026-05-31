@@ -1,4 +1,4 @@
-"""通过 market-data API 获取 K-line 数据。"""
+"""通过 Backend API 获取 K-line 数据（读 PG，不穿透 yfinance）。"""
 
 from __future__ import annotations
 
@@ -9,11 +9,11 @@ from ..config import get_settings
 
 
 class DataFetcher:
-    """从 market-data 服务获取 K-line 数据。"""
+    """从 Backend API（PG）获取 K-line 数据。"""
 
     def __init__(self):
         settings = get_settings()
-        self.base_url = settings.market_data_url
+        self.base_url = settings.backend_api_url
         self.token = settings.service_token
 
     async def fetch_kline(
@@ -34,20 +34,19 @@ class DataFetcher:
         """
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.get(
-                f"{self.base_url}/api/kline",
-                params={"symbol": symbol, "interval": interval, "limit": limit},
-                headers={"Authorization": f"Bearer {self.token}"},
+                f"{self.base_url}/api/stock/{symbol}/kline",
+                params={"interval": interval, "limit": limit},
             )
             resp.raise_for_status()
-            data = resp.json()
+            body = resp.json()
 
-        klines = data.get("data", [])
+        # API 格式: { code, data: { data: [...] } }
+        klines = body.get("data", {}).get("data", [])
         if not klines:
             raise ValueError(f"No kline data for {symbol}")
 
         df = pd.DataFrame(klines)
-        # 转换列名和数据类型
-        df["time"] = pd.to_datetime(df["time"], utc=True)
+        df["time"] = pd.to_datetime(df["timestamp"], utc=True)
         df.set_index("time", inplace=True)
         for col in ["open", "high", "low", "close", "volume"]:
             df[col] = df[col].astype(float)

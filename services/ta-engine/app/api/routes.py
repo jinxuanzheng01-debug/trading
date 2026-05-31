@@ -51,11 +51,11 @@ async def get_factors(symbol: str, period: str = "1d"):
 async def chan_analyze(symbol: str, period: str = "1d"):
     """缠论分析：返回笔、线段、中枢、买卖点。"""
     try:
-        df = await fetcher.fetch_kline(symbol, period)
+        df = await fetcher.fetch_kline(symbol, period, limit=120)
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Failed to fetch kline data: {str(e)}")
 
-    if df.empty or len(df) < 30:
+    if df.empty or len(df) < 10:
         raise HTTPException(status_code=422, detail=f"Insufficient data for {symbol}")
 
     result = chan_engine.analyze(df, symbol, period)

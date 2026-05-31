@@ -10,6 +10,7 @@ import { internalQuotes as internalQuotesRoutes } from './routes/internal-quotes
 import stock from './routes/stock'
 import logs from './routes/logs'
 import { paper as paperRoutes } from './routes/paper'
+import { chanLLM } from './routes/chan-llm'
 
 const app = new Hono()
 
@@ -42,6 +43,7 @@ app.route('/api/internal', internalQuotesRoutes)
 app.route('/api/stock', stock)
 app.route('/api/logs', logs)
 app.route('/api/paper', paperRoutes)
+app.route('/api/chan', chanLLM)
 
 export { app }
 export default app

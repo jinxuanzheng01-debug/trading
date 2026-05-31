@@ -39,7 +39,7 @@ internalQuotes.post('/klines/sync', zValidator('json', klineSyncSchema), async (
     try {
       await db.execute(sql`
         INSERT INTO klines (stock_id, timestamp, open, high, low, close, volume, data_source)
-        SELECT s.id, ${new Date(k.time).toISOString()}::timestamp,
+        SELECT s.id, ${new Date(k.time).toISOString().split('T')[0]}::date,
           ${String(k.open)}::numeric, ${String(k.high)}::numeric,
           ${String(k.low)}::numeric, ${String(k.close)}::numeric,
           ${k.volume}::bigint, 'yfinance'
