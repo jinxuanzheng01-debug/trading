@@ -191,43 +191,10 @@ class ChanEngine:
                     logger.debug("Skipping zs: %s", exc)
                     continue
 
-        # ---- 买卖点（尝试 chan.py 原生计算）----
+        # 买卖点交给 LLM 判断，这里只保留原始结构数据
         bsp_list: list[BSPInfo] = []
-        try:
-            kl_list.bs_point_lst.cal(
-                list(kl_list.bi_list) if kl_list.bi_list else [],
-                list(kl_list.seg_list) if kl_list.seg_list else [],
-            )
-            bsp_points = kl_list.bs_point_lst.getSortedBspList()
-        except (AttributeError, Exception) as exc:
-            logger.debug("bs_point_lst unavailable: %s", exc)
-            bsp_points = []
 
-        for bsp in bsp_points:
-            try:
-                primary = bsp.type[0].main_type() if bsp.type else "1"
-                if bsp.is_buy:
-                    type_name = {"1": "一买", "2": "二买", "3": "三买"}.get(primary, f"买{primary}")
-                else:
-                    type_name = {"1": "一卖", "2": "二卖", "3": "三卖"}.get(primary, f"卖{primary}")
-                bsp_list.append(
-                    BSPInfo(
-                        type=type_name,
-                        price=float(bsp.klu.close),
-                        time=str(bsp.klu.time),
-                        confidence=0.8,
-                    )
-                )
-            except Exception as exc:
-                logger.debug("Skipping bsp: %s", exc)
-                continue
-
-        # ---- 启发式买卖点（chan.py BSP 为空时的补充规则）----
-        if not bsp_list and zs_list and bi_list:
-            heuristic = _heuristic_bsp(zs_list, bi_list, level)
-            bsp_list.extend(heuristic)
-
-        summary = self._build_summary(zs_list, bsp_list, bi_list)
+        summary = self._build_summary(zs_list, bi_list)
 
         return ChanResult(
             symbol=symbol,
@@ -242,7 +209,6 @@ class ChanEngine:
     @staticmethod
     def _build_summary(
         zs_list: list[ZSInfo],
-        bsp_list: list[BSPInfo],
         bi_list: list[BiInfo],
     ) -> str:
         """生成一句话结构摘要。"""
@@ -256,110 +222,4 @@ class ChanEngine:
             last_bi = bi_list[-1]
             parts.append(f"最后一笔为{last_bi.direction}笔")
 
-        if bsp_list:
-            bsp_names = [b.type for b in bsp_list[-2:]]
-            parts.append(f"最近买卖点: {', '.join(bsp_names)}")
-
         return "，".join(parts) if parts else "无显著结构"
-
-
-def _heuristic_bsp(
-    zs_list: list[ZSInfo],
-    bi_list: list[BiInfo],
-    level: str,
-) -> list[BSPInfo]:
-    """基于中枢和笔的简单形态识别，补充 chan.py 不输出 BSP 时的买卖点判断。
-
-    只检测一买/一卖（离开中枢后反向笔），二买/二卖（回踩中枢不破）。
-    """
-    result: list[BSPInfo] = []
-    if len(bi_list) < 2 or len(zs_list) < 1:
-        return result
-
-    last_bi = bi_list[-1]
-    prev_bi = bi_list[-2]
-    last_zs = zs_list[-1]
-
-    # 一买：向下笔跌破中枢下沿后，出现向上笔
-    if prev_bi.direction == "down" and last_bi.direction == "up":
-        if prev_bi.end_price < last_zs.zd:
-            result.append(BSPInfo(
-                type="一买",
-                price=last_bi.start_price,
-                time=last_bi.start_time,
-                confidence=0.6,
-            ))
-
-    # 一卖：向上笔突破中枢上沿后，出现向下笔
-    if prev_bi.direction == "up" and last_bi.direction == "down":
-        if prev_bi.end_price > last_zs.zg:
-            result.append(BSPInfo(
-                type="一卖",
-                price=last_bi.start_price,
-                time=last_bi.start_time,
-                confidence=0.6,
-            ))
-
-    # 二买：向下笔回到中枢区间（zd~zg），未跌破 zd，然后向上
-    if prev_bi.direction == "down" and last_bi.direction == "up":
-        if last_zs.zd <= prev_bi.end_price <= last_zs.zg:
-            result.append(BSPInfo(
-                type="二买",
-                price=last_bi.start_price,
-                time=last_bi.start_time,
-                confidence=0.5,
-            ))
-
-    # 二卖：向上笔回到中枢区间，未突破 zg，然后向下
-    if prev_bi.direction == "up" and last_bi.direction == "down":
-        if last_zs.zd <= prev_bi.end_price <= last_zs.zg:
-            result.append(BSPInfo(
-                type="二卖",
-                price=last_bi.start_price,
-                time=last_bi.start_time,
-                confidence=0.5,
-            ))
-
-    # 三买：向下笔回踩不破中枢上沿 ZG，然后向上笔
-    if prev_bi.direction == "down" and last_bi.direction == "up":
-        if prev_bi.end_price > last_zs.zg:
-            result.append(BSPInfo(
-                type="三买",
-                price=last_bi.start_price,
-                time=last_bi.start_time,
-                confidence=0.55,
-            ))
-
-    # 三卖：向上笔反弹不破中枢下沿 ZD，然后向下笔
-    if prev_bi.direction == "up" and last_bi.direction == "down":
-        if prev_bi.end_price < last_zs.zd:
-            result.append(BSPInfo(
-                type="三卖",
-                price=last_bi.start_price,
-                time=last_bi.start_time,
-                confidence=0.55,
-            ))
-
-    # 如果价格已远离最后一个中枢，检查更早的中枢
-    if not result and len(zs_list) >= 2:
-        for older_zs in reversed(zs_list[:-1]):
-            if prev_bi.direction == "down" and last_bi.direction == "up":
-                if prev_bi.end_price > older_zs.zg:
-                    result.append(BSPInfo(
-                        type="三买",
-                        price=last_bi.start_price,
-                        time=last_bi.start_time,
-                        confidence=0.4,
-                    ))
-                    break
-            if prev_bi.direction == "up" and last_bi.direction == "down":
-                if prev_bi.end_price < older_zs.zd:
-                    result.append(BSPInfo(
-                        type="三卖",
-                        price=last_bi.start_price,
-                        time=last_bi.start_time,
-                        confidence=0.4,
-                    ))
-                    break
-
-    return result
