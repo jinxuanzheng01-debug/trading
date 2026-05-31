@@ -320,4 +320,46 @@ def _heuristic_bsp(
                 confidence=0.5,
             ))
 
+    # 三买：向下笔回踩不破中枢上沿 ZG，然后向上笔
+    if prev_bi.direction == "down" and last_bi.direction == "up":
+        if prev_bi.end_price > last_zs.zg:
+            result.append(BSPInfo(
+                type="三买",
+                price=last_bi.start_price,
+                time=last_bi.start_time,
+                confidence=0.55,
+            ))
+
+    # 三卖：向上笔反弹不破中枢下沿 ZD，然后向下笔
+    if prev_bi.direction == "up" and last_bi.direction == "down":
+        if prev_bi.end_price < last_zs.zd:
+            result.append(BSPInfo(
+                type="三卖",
+                price=last_bi.start_price,
+                time=last_bi.start_time,
+                confidence=0.55,
+            ))
+
+    # 如果价格已远离最后一个中枢，检查更早的中枢
+    if not result and len(zs_list) >= 2:
+        for older_zs in reversed(zs_list[:-1]):
+            if prev_bi.direction == "down" and last_bi.direction == "up":
+                if prev_bi.end_price > older_zs.zg:
+                    result.append(BSPInfo(
+                        type="三买",
+                        price=last_bi.start_price,
+                        time=last_bi.start_time,
+                        confidence=0.4,
+                    ))
+                    break
+            if prev_bi.direction == "up" and last_bi.direction == "down":
+                if prev_bi.end_price < older_zs.zd:
+                    result.append(BSPInfo(
+                        type="三卖",
+                        price=last_bi.start_price,
+                        time=last_bi.start_time,
+                        confidence=0.4,
+                    ))
+                    break
+
     return result
